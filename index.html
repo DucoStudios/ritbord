@@ -2253,6 +2253,18 @@
     return finishProp(g);
   }
 
+  function buildPinusPinea() {
+    var g = new THREE.Group();
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 2.7, 10), propMat(PROP_COLORS.treeTrunk));
+    trunk.position.y = 1.35;
+    g.add(trunk);
+    var canopy = new THREE.Mesh(new THREE.SphereGeometry(1.15, 18, 12), propMat(PROP_COLORS.pineGreen));
+    canopy.scale.set(1, 0.4, 1);
+    canopy.position.y = 2.7 + 0.3;
+    g.add(canopy);
+    return finishProp(g);
+  }
+
   function buildCypress() {
     var g = new THREE.Group();
     var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.5, 8), propMat(PROP_COLORS.treeTrunk));
@@ -2308,11 +2320,11 @@
 
   var PROP_BUILDERS = {
     man: buildMan, woman: buildWoman, girl9: buildGirl9, boy5: buildBoy5, girl3: buildGirl3, dog: buildDog,
-    pine: buildPineTree, cypress: buildCypress, car: buildCar, bicycle: buildBicycle
+    pine: buildPineTree, pinuspinea: buildPinusPinea, cypress: buildCypress, car: buildCar, bicycle: buildBicycle
   };
   var PROP_LABELS = {
     man: "Man (hat)", woman: "Woman (bun)", girl9: "Girl, 9y", boy5: "Boy, 5y (cap)", girl3: "Girl, 3y", dog: "Dog",
-    pine: "Pine tree", cypress: "Cypress", car: "Car", bicycle: "Bicycle"
+    pine: "Pine tree", pinuspinea: "Pinus pinea", cypress: "Cypress", car: "Car", bicycle: "Bicycle"
   };
   var PROP_ICONS = {
     man: '<circle cx="12" cy="7" r="3"/><path d="M12 10v7M8 13h8M9 21l3-4 3 4"/>',
@@ -2322,6 +2334,7 @@
     girl3: '<circle cx="12" cy="8" r="2.2"/><path d="M13.9 7.3c.8.3 1 1.3.4 2" stroke-linecap="round"/><path d="M12 10.2v4.8M10.4 21l1.6-4.4 1.6 4.4"/>',
     dog: '<ellipse cx="11" cy="14" rx="6" ry="3"/><circle cx="18" cy="12" r="2.6"/><path d="M6 17v3M10 17v3M14 16v3"/>',
     pine: '<path d="M12 2l4 6h-2l3.5 5H15l3.5 6H5.5L9 13H7L10.5 8H8.5z"/><path d="M12 21v-3" stroke-dasharray="0"/>',
+    pinuspinea: '<path d="M4.5 9.5c1-3 4-5 7.5-5s6.5 2 7.5 5c-1 1.6-4 2.6-7.5 2.6s-6.5-1-7.5-2.6z"/><path d="M12 12v9"/>',
     cypress: '<path d="M12 2c3 4 3 14 0 19-3-5-3-15 0-19z"/>',
     car: '<rect x="3" y="10" width="18" height="6" rx="2.5"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/>',
     bicycle: '<circle cx="6" cy="17" r="3.4"/><circle cx="18" cy="17" r="3.4"/><path d="M6 17l5-9h5l2 5M11 8H8.5M9 17h9"/>'
