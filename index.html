@@ -1269,6 +1269,42 @@
     }
   }
 
+  // whole-face bounding footprint: gathers every coplanar, correctly-facing triangle
+  // at the given axis/offset and returns its u,v bounds. Note: this is the OUTER bound
+  // of the face, not hole-aware -- if the face already has an opening cut into it (e.g.
+  // a window), the footprint still spans the full original rectangle, not around the hole.
+  function wholeFaceFootprint(mesh, axis, sign, faceOffset) {
+    var geo = mesh.geometry;
+    var pos = geo.attributes.position;
+    var idx = geo.index;
+    var triCount = idx ? idx.count / 3 : pos.count / 3;
+    var m = mesh.matrixWorld;
+    var EPS = 0.01;
+    var uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    function coordOf(v) { return axis === "x" ? v.x : axis === "y" ? v.y : v.z; }
+    for (var t = 0; t < triCount; t++) {
+      var ia = idx ? idx.getX(t * 3) : t * 3;
+      var ib = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
+      var ic = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+      var pa = new THREE.Vector3().fromBufferAttribute(pos, ia).applyMatrix4(m);
+      var pb = new THREE.Vector3().fromBufferAttribute(pos, ib).applyMatrix4(m);
+      var pc = new THREE.Vector3().fromBufferAttribute(pos, ic).applyMatrix4(m);
+      if (Math.abs(coordOf(pa) - faceOffset) > EPS) continue;
+      if (Math.abs(coordOf(pb) - faceOffset) > EPS) continue;
+      if (Math.abs(coordOf(pc) - faceOffset) > EPS) continue;
+      var normal = new THREE.Vector3().crossVectors(
+        new THREE.Vector3().subVectors(pb, pa), new THREE.Vector3().subVectors(pc, pa)
+      ).normalize();
+      if (coordOf(normal) * sign < 0.5) continue;
+      [pa, pb, pc].forEach(function (p) {
+        var uv = faceUV(axis, p);
+        uMin = Math.min(uMin, uv.u); uMax = Math.max(uMax, uv.u);
+        vMin = Math.min(vMin, uv.v); vMax = Math.max(vMax, uv.v);
+      });
+    }
+    return { uMin: uMin, uMax: uMax, vMin: vMin, vMax: vMax };
+  }
+
   function onPointerDown(e) {
     if (e.button === 2 || e.button === 1) {
       orbiting = e.button === 2;
@@ -1333,8 +1369,31 @@
       var hit = volumeHit(e);
       var hitVol = hit ? volumeOf(hit.object) : null;
       if (hit && hitVol && hitVol.isCompound) {
-        setHint("Sammansatta former (efter Subtrahera/Fasa) kan inte dras än");
-        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        var faCompound = faceAxisFromNormal(hit.face.normal);
+        if (!faCompound) {
+          setHint("Den ytan är fasad/diagonal, går inte att trycka på än");
+          setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+          return;
+        }
+        var faceOffsetC = faCompound.axis === "x" ? hit.point.x : faCompound.axis === "y" ? hit.point.y : hit.point.z;
+        var fp = wholeFaceFootprint(hitVol.mesh, faCompound.axis, faCompound.sign, faceOffsetC);
+        var previewMatC = new THREE.MeshBasicMaterial({ color: 0xc1601f, transparent: true, opacity: 0.4, depthTest: false });
+        var nAc = faceOffsetC, nBc = faceOffsetC + faCompound.sign * 0.02;
+        var bndsC = boundsFromFace(faCompound.axis, fp.uMin, fp.uMax, fp.vMin, fp.vMax, Math.min(nAc, nBc), Math.max(nAc, nBc));
+        var previewMeshC = makeBoxMesh(bndsC.min, bndsC.max, previewMatC);
+        scene.add(previewMeshC);
+        pendingSketch = {
+          targetVol: hitVol, axis: faCompound.axis, sign: faCompound.sign, faceOffset: faceOffsetC,
+          uMin: fp.uMin, uMax: fp.uMax, vMin: fp.vMin, vMax: fp.vMax, mesh: previewMeshC
+        };
+        var normalVecC = new THREE.Vector3(faCompound.axis === "x" ? faCompound.sign : 0, faCompound.axis === "y" ? faCompound.sign : 0, faCompound.axis === "z" ? faCompound.sign : 0);
+        var camDirC = new THREE.Vector3(); camera.getWorldDirection(camDirC);
+        var projC = camDirC.clone().sub(normalVecC.clone().multiplyScalar(camDirC.dot(normalVecC)));
+        if (projC.lengthSq() < 1e-6) projC.set(0, 1, 0);
+        var planeC = new THREE.Plane().setFromNormalAndCoplanarPoint(projC.normalize(), hit.point);
+        sketchPull = { plane: planeC, normal: normalVecC, hitPoint: hit.point.clone(), lastDepth: 0 };
+        selectSingle(hitVol);
+        renderer.domElement.setPointerCapture(e.pointerId);
         return;
       }
       var face = hit ? pickFace(hit) : null;
