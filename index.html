@@ -7,15 +7,15 @@
     --panel-border: #e2d8c2;
     --ink: #221f1a;
     --steel: #6b6558;
-    --accent: #c1601f;
+    --accent: #1f9e97;
     --accent-ink: #fff8f0;
     --shadow: rgba(34, 31, 26, 0.16);
     --scene-bg: #d9d3c7;
     --scene-plinth: #f4f0e6;
     --scene-grid-major: #c7c0b1;
     --scene-grid-minor: #d9d3c7;
-    --sky-top: #4f86c6;
-    --sky-bottom: #d7e8f5;
+    --sky-top: #6fa8e0;
+    --sky-bottom: #eaf4fb;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -26,15 +26,15 @@
       --panel-border: #313a4a;
       --ink: #e8ecf3;
       --steel: #8b93a1;
-      --accent: #e08a3c;
-      --accent-ink: #211405;
+      --accent: #3ecdc4;
+      --accent-ink: #04211f;
       --shadow: rgba(0, 0, 0, 0.5);
       --scene-bg: #2b2723;
       --scene-plinth: #46403a;
       --scene-grid-major: #3d3833;
       --scene-grid-minor: #322e29;
-      --sky-top: #0a1220;
-      --sky-bottom: #1c2b45;
+      --sky-top: #182a4a;
+      --sky-bottom: #35507a;
     }
   }
 
@@ -45,15 +45,15 @@
     --panel-border: #313a4a;
     --ink: #e8ecf3;
     --steel: #8b93a1;
-    --accent: #e08a3c;
-    --accent-ink: #211405;
+    --accent: #3ecdc4;
+    --accent-ink: #04211f;
     --shadow: rgba(0, 0, 0, 0.5);
     --scene-bg: #2b2723;
     --scene-plinth: #46403a;
     --scene-grid-major: #3d3833;
     --scene-grid-minor: #322e29;
-    --sky-top: #0a1220;
-    --sky-bottom: #1c2b45;
+    --sky-top: #182a4a;
+    --sky-bottom: #35507a;
   }
 
   :root[data-theme="light"] {
@@ -63,15 +63,15 @@
     --panel-border: #e2d8c2;
     --ink: #221f1a;
     --steel: #6b6558;
-    --accent: #c1601f;
+    --accent: #1f9e97;
     --accent-ink: #fff8f0;
     --shadow: rgba(34, 31, 26, 0.16);
     --scene-bg: #d9d3c7;
     --scene-plinth: #f4f0e6;
     --scene-grid-major: #c7c0b1;
     --scene-grid-minor: #d9d3c7;
-    --sky-top: #4f86c6;
-    --sky-bottom: #d7e8f5;
+    --sky-top: #6fa8e0;
+    --sky-bottom: #eaf4fb;
   }
 
   * { box-sizing: border-box; }
@@ -245,8 +245,8 @@
     top: 50%;
     right: 18px;
     transform: translateY(-50%);
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
     gap: 8px;
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -535,76 +535,80 @@
 </style>
 
 <div id="stage" class="tool-rectangle">
-  <div class="toolbar" role="toolbar" aria-label="Verktyg">
+  <div class="toolbar" role="toolbar" aria-label="Tools">
     <span class="wordmark">Rit<em>bord</em></span>
-    <button class="tool-btn" data-tool="select" aria-pressed="false" title="Välj / rotera (1)">
+    <button class="tool-btn" data-tool="select" aria-pressed="false" title="Select / orbit (1)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l13 8.5-6 1.2-1.2 6L6 3z"/></svg>
-      <span class="btn-label">Välj</span>
+      <span class="btn-label">Select</span>
     </button>
-    <button class="tool-btn" data-tool="rectangle" aria-pressed="true" title="Rita form (2)">
+    <button class="tool-btn" data-tool="rectangle" aria-pressed="true" title="Draw shape (2)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
-      <span class="btn-label">Rita</span>
+      <span class="btn-label">Draw</span>
     </button>
-    <button class="tool-btn" data-tool="pushpull" aria-pressed="false" title="Dra upp volym (3)">
+    <button class="tool-btn" data-tool="pushpull" aria-pressed="false" title="Push/pull volume (3)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 3l-3.5 3.5M12 3l3.5 3.5"/><rect x="5" y="15" width="14" height="6" rx="1"/></svg>
-      <span class="btn-label">Volym</span>
+      <span class="btn-label">Push/Pull</span>
     </button>
-    <button class="tool-btn" data-tool="move" aria-pressed="false" title="Flytta (4)">
+    <button class="tool-btn" data-tool="move" aria-pressed="false" title="Move (4)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M6 6L3 12M3 12l3 6M18 6l3 6M21 12l-3 6"/></svg>
-      <span class="btn-label">Flytta</span>
+      <span class="btn-label">Move</span>
     </button>
-    <button class="tool-btn" data-tool="paint" aria-pressed="false" title="Färg (5)">
+    <button class="tool-btn" data-tool="paint" aria-pressed="false" title="Paint (5)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c4-3 7-6.2 7-10a7 7 0 10-14 0c0 3.8 3 7 7 10z"/><circle cx="12" cy="11" r="2.4"/></svg>
-      <span class="btn-label">Färg</span>
+      <span class="btn-label">Paint</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="tool-btn" data-action="subtract" title="Subtrahera: markera formen som blir kvar, skift-klicka den som skärs bort">
+    <button class="tool-btn" data-action="subtract" title="Subtract: select the shape to keep, shift-click the one to cut away">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><rect x="9" y="9" width="12" height="12" rx="1" stroke-dasharray="2.5 2.5"/></svg>
-      <span class="btn-label">Subtrahera</span>
+      <span class="btn-label">Subtract</span>
     </button>
-    <button class="tool-btn" data-action="chamfer" title="Fasa kanterna på markerad form">
+    <button class="tool-btn" data-action="chamfer" title="Chamfer the edges of the selected shape">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5z"/></svg>
-      <span class="btn-label">Fasa</span>
+      <span class="btn-label">Chamfer</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="tool-btn" data-action="group" title="Gruppera markerade former (skift-klicka fler först)">
+    <button class="tool-btn" data-action="group" title="Group the selected shapes (shift-click more first)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M8 11v2a2 2 0 002 2h2" stroke-dasharray="2 2"/></svg>
-      <span class="btn-label">Gruppera</span>
+      <span class="btn-label">Group</span>
     </button>
-    <button class="tool-btn" data-action="lockgroup" title="Lås/lås upp markerad grupp">
+    <button class="tool-btn" data-action="lockgroup" title="Lock/unlock the selected group">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="1.5"/><path d="M7.5 11V7.5a4.5 4.5 0 019 0V11"/></svg>
-      <span class="btn-label">Lås</span>
+      <span class="btn-label">Lock</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="tool-btn" data-action="import" title="Importera en ritning (klistra in väggmått)">
+    <button class="tool-btn" data-action="import" title="Import a drawing (paste wall measurements)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 15l-4-4M12 15l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-      <span class="btn-label">Importera</span>
+      <span class="btn-label">Import</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="tool-btn" data-action="undo" title="Ångra (Cmd/Ctrl+Z)">
+    <button class="tool-btn" data-action="undo" title="Undo (Cmd/Ctrl+Z)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7L3 11l4 4"/><path d="M3 11h11a6 6 0 010 12h-2"/></svg>
-      <span class="btn-label">Ångra</span>
+      <span class="btn-label">Undo</span>
     </button>
-    <button class="tool-btn" data-action="clear" title="Rensa allt">
+    <button class="tool-btn" data-action="clear" title="Clear all">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
-      <span class="btn-label">Rensa</span>
+      <span class="btn-label">Clear</span>
+    </button>
+    <button class="tool-btn" data-action="newdrawing" title="New drawing: clears everything including layers and groups, permanently">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z"/><path d="M14 3v5h5"/></svg>
+      <span class="btn-label">New drawing</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="icon-toggle" id="gridToggle" aria-pressed="true" title="Visa/dölj rutnät">
+    <button class="icon-toggle" id="gridToggle" aria-pressed="true" title="Show/hide grid">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
     </button>
-    <button class="icon-toggle" id="sunToggle" aria-pressed="false" title="Sol och väderstreck">
+    <button class="icon-toggle" id="sunToggle" aria-pressed="false" title="Sun and compass">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
     </button>
-    <button class="icon-toggle" id="layersToggle" aria-pressed="false" title="Lager">
+    <button class="icon-toggle" id="layersToggle" aria-pressed="false" title="Layers">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
     </button>
-    <button class="icon-toggle" id="helpToggle" aria-pressed="false" title="Kortkommandon och styrning">
+    <button class="icon-toggle" id="helpToggle" aria-pressed="false" title="Shortcuts and controls">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.3 9.2a2.7 2.7 0 015.2.9c0 1.8-2.5 1.9-2.5 3.6" stroke-linecap="round"/><circle cx="12" cy="17" r="0.15" fill="currentColor" stroke-width="2.6"/></svg>
     </button>
   </div>
 
-  <div class="hint" id="hint">Dra på golvet för att rita en form</div>
+  <div class="hint" id="hint">Drag on the floor to draw a shape</div>
 
   <div class="hud" id="hud">
     <span><span class="dim-label">B</span><span id="dimW">0.0</span> m</span>
@@ -615,61 +619,61 @@
   <div class="swatch-rail" id="swatchRail"></div>
 
   <div class="sun-panel" id="sunPanel">
-    <h2>Sol &amp; väderstreck</h2>
-    <div class="sun-row"><label for="sunLat">Latitud</label><input type="number" id="sunLat" value="43.03" step="0.01"></div>
-    <div class="sun-row"><label for="sunLon">Longitud</label><input type="number" id="sunLon" value="2.98" step="0.01"></div>
-    <div class="sun-row"><label for="sunDate">Datum</label><input type="date" id="sunDate"></div>
-    <div class="sun-row"><label for="sunTime">Tid</label><input type="range" id="sunTime" min="0" max="1439" value="720"></div>
-    <div class="sun-row"><label for="sunNorth">Norr, °</label><input type="range" id="sunNorth" min="0" max="359" value="0"></div>
-    <div class="sun-readout"><span id="sunTimeLabel">12:00</span><span id="sunReadout">34° höjd</span></div>
+    <h2>Sun &amp; compass</h2>
+    <div class="sun-row"><label for="sunLat">Latitude</label><input type="number" id="sunLat" value="43.03" step="0.01"></div>
+    <div class="sun-row"><label for="sunLon">Longitude</label><input type="number" id="sunLon" value="2.98" step="0.01"></div>
+    <div class="sun-row"><label for="sunDate">Date</label><input type="date" id="sunDate"></div>
+    <div class="sun-row"><label for="sunTime">Time</label><input type="range" id="sunTime" min="0" max="1439" value="720"></div>
+    <div class="sun-row"><label for="sunNorth">North, °</label><input type="range" id="sunNorth" min="0" max="359" value="0"></div>
+    <div class="sun-readout"><span id="sunTimeLabel">12:00</span><span id="sunReadout">34° elevation</span></div>
   </div>
 
   <div class="help-panel" id="helpPanel">
-    <h2>Styrning &amp; kortkommandon</h2>
-    <h3>Verktyg</h3>
+    <h2>Controls &amp; shortcuts</h2>
+    <h3>Tools</h3>
     <div class="help-row"><kbd>1</kbd><span>Välj</span></div>
     <div class="help-row"><kbd>2</kbd><span>Rita</span></div>
-    <div class="help-row"><kbd>3</kbd><span>Volym (push/pull)</span></div>
-    <div class="help-row"><kbd>4</kbd><span>Flytta</span></div>
-    <div class="help-row"><kbd>5</kbd><span>Färg</span></div>
-    <div class="help-row"><kbd>⌘/Ctrl</kbd><kbd>Z</kbd><span>Ångra</span></div>
-    <div class="help-row"><kbd>Skift-klick</kbd><span>Lägg till i markering</span></div>
-    <h3>Grupper &amp; lager</h3>
-    <div class="help-row"><kbd>Gruppera</kbd><span>Bunta ihop markerade former</span></div>
-    <div class="help-row"><kbd>Lås</kbd><span>Lås/lås upp markerad grupp</span></div>
-    <div class="help-row"><kbd>Lager-panelen</kbd><span>Nytt lager, visa/dölj, lås ett helt lager</span></div>
-    <h3>Mus</h3>
-    <div class="help-row"><kbd>Vänsterklick, dra</kbd><span>Aktivt verktyg</span></div>
-    <div class="help-row"><kbd>Högerklick, dra</kbd><span>Rotera runt</span></div>
-    <div class="help-row"><kbd>Mittenknapp, dra</kbd><span>Panorera</span></div>
-    <div class="help-row"><kbd>Scrollhjul</kbd><span>Zooma</span></div>
+    <div class="help-row"><kbd>3</kbd><span>Push/Pull</span></div>
+    <div class="help-row"><kbd>4</kbd><span>Move</span></div>
+    <div class="help-row"><kbd>5</kbd><span>Paint</span></div>
+    <div class="help-row"><kbd>⌘/Ctrl</kbd><kbd>Z</kbd><span>Undo</span></div>
+    <div class="help-row"><kbd>Shift-click</kbd><span>Add to selection</span></div>
+    <h3>Groups &amp; layers</h3>
+    <div class="help-row"><kbd>Group</kbd><span>Bundle up the selected shapes</span></div>
+    <div class="help-row"><kbd>Lock</kbd><span>Lock/unlock the selected group</span></div>
+    <div class="help-row"><kbd>Layers panel</kbd><span>New layer, show/hide, lock a whole layer</span></div>
+    <h3>Mouse</h3>
+    <div class="help-row"><kbd>Left-click, drag</kbd><span>Active tool</span></div>
+    <div class="help-row"><kbd>Right-click, drag</kbd><span>Orbit around</span></div>
+    <div class="help-row"><kbd>Middle button, drag</kbd><span>Pan</span></div>
+    <div class="help-row"><kbd>Scroll wheel</kbd><span>Zoom</span></div>
     <h3>Touch</h3>
-    <div class="help-row"><kbd>1 finger, dra</kbd><span>Aktivt verktyg</span></div>
-    <div class="help-row"><kbd>2 fingrar, dra</kbd><span>Rotera runt</span></div>
-    <div class="help-row"><kbd>Nyp med 2 fingrar</kbd><span>Zooma</span></div>
-    <button class="tool-btn help-close" id="helpClose">Stäng</button>
+    <div class="help-row"><kbd>1 finger, drag</kbd><span>Active tool</span></div>
+    <div class="help-row"><kbd>2 fingers, drag</kbd><span>Orbit around</span></div>
+    <div class="help-row"><kbd>Pinch with 2 fingers</kbd><span>Zoom</span></div>
+    <button class="tool-btn help-close" id="helpClose">Close</button>
   </div>
 
   <div class="layers-panel" id="layersPanel">
-    <h2>Lager</h2>
+    <h2>Layers</h2>
     <div id="layerRows"></div>
     <button class="tool-btn layer-add" id="layerAdd">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-      <span class="btn-label">Nytt lager</span>
+      <span class="btn-label">New layer</span>
     </button>
   </div>
 
   <div class="help-panel import-panel" id="importPanel">
-    <h2>Importera ritning</h2>
+    <h2>Import drawing</h2>
     <p class="import-hint">
-      Klistra in en lista med väggar/former som JSON, en per rad-objekt: <code>x</code>/<code>z</code> är hörnet med lägst koordinat, <code>w</code>/<code>d</code>/<code>h</code> är bredd/djup/höjd i meter, <code>color</code> är valfri.
-      Be Claude räkna ut den här listan åt dig utifrån mått du beskriver.
+      Paste a list of walls/shapes as JSON, one object per item: <code>x</code>/<code>z</code> is the corner with the lowest coordinate, <code>w</code>/<code>d</code>/<code>h</code> is width/depth/height in meters, <code>color</code> is optional.
+      Ask Claude to work out this list for you from measurements you describe.
     </p>
     <textarea id="importText" spellcheck="false" placeholder='[{"x":0,"z":0,"w":6,"d":0.2,"h":2.5,"color":"#f4f0e6"}]'></textarea>
     <div class="import-error" id="importError"></div>
     <div class="import-actions">
-      <button class="tool-btn" id="importCancel">Avbryt</button>
-      <button class="tool-btn" id="importConfirm">Importera</button>
+      <button class="tool-btn" id="importCancel">Cancel</button>
+      <button class="tool-btn" id="importConfirm">Import</button>
     </div>
   </div>
 </div>
@@ -718,7 +722,8 @@
   var importConfirmEl = document.getElementById("importConfirm");
 
   var PALETTE = [
-    "#f4f0e6", "#e6ddc8", "#ffffff", "#d3c6a8", "#b6a888", "#8a7d64"
+    "#f4f0e6", "#e6ddc8", "#ffffff", "#d3c6a8", "#b6a888", "#8a7d64",
+    "#aecbe8", "#bcdfc3", "#f3c6d1", "#f4e2a8", "#cdbfe6", "#f2c9a8"
   ];
 
   function cssVar(name) {
@@ -1002,7 +1007,7 @@
     var skyBottom = cssVar("--sky-bottom") || "#d7e8f5";
     skyUniforms.topColor.value.set(skyTop);
     skyUniforms.bottomColor.value.set(skyBottom);
-    scene.fog = new THREE.Fog(new THREE.Color(skyBottom).getHex(), 30, 90);
+    scene.fog = new THREE.Fog(new THREE.Color(skyBottom).getHex(), 140, 320);
     plinth.material.color.set(plinthColor);
     grid.material.color.set(major);
     grid.material.vertexColors = false;
@@ -1092,7 +1097,7 @@
 
     var hh = Math.floor(minutesUTC / 60), mm = minutesUTC % 60;
     sunTimeLabelEl.textContent = (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm + " UTC";
-    sunReadoutEl.textContent = Math.round(s.elevation) + "° höjd, " + Math.round(s.azimuth) + "° azimut";
+    sunReadoutEl.textContent = Math.round(s.elevation) + "° elevation, " + Math.round(s.azimuth) + "° azimuth";
   }
 
   sunDateEl.value = new Date().toISOString().slice(0, 10);
@@ -1207,9 +1212,21 @@
     setSelection(vol ? [vol] : []);
   }
 
+  // box faces use a 6-entry material array (THREE.BoxGeometry's own group order:
+  // +X,-X,+Y,-Y,+Z,-Z), so each face can be painted independently
+  function materialIndexFromNormal(n) {
+    if (n.x > 0.5) return 0;
+    if (n.x < -0.5) return 1;
+    if (n.y > 0.5) return 2;
+    if (n.y < -0.5) return 3;
+    if (n.z > 0.5) return 4;
+    return 5;
+  }
+
   function makeVolume(minX, minZ, w, d, h, colorHex) {
-    var mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.92, metalness: 0 });
-    var mesh = new THREE.Mesh(boxGeo, mat);
+    var mats = [];
+    for (var i = 0; i < 6; i++) mats.push(new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.92, metalness: 0 }));
+    var mesh = new THREE.Mesh(boxGeo, mats);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.scale.set(w, h, d);
@@ -1219,6 +1236,21 @@
     var vol = { mesh: mesh, color: colorHex, layerId: activeLayerId, groupId: null };
     volumes.push(vol);
     return vol;
+  }
+
+  function paintFace(vol, hit, colorHex) {
+    if (vol.isCompound) {
+      vol.color = colorHex;
+      vol.mesh.material.color.set(colorHex);
+      return;
+    }
+    var idx = materialIndexFromNormal(hit.face.normal);
+    vol.mesh.material[idx].color.set(colorHex);
+  }
+
+  function representativeColor(vol) {
+    if (vol.isCompound) return vol.color;
+    return "#" + vol.mesh.material[2].color.getHexString();
   }
 
   function addCompoundVolume(geo, colorHex, layerId, groupId) {
@@ -1236,8 +1268,9 @@
 
   function removeVolume(vol) {
     scene.remove(vol.mesh);
-    vol.mesh.material.dispose();
-    vol.mesh.geometry.dispose();
+    if (Array.isArray(vol.mesh.material)) vol.mesh.material.forEach(function (m) { m.dispose(); });
+    else vol.mesh.material.dispose();
+    if (vol.mesh.geometry !== boxGeo) vol.mesh.geometry.dispose();
     var i = volumes.indexOf(vol);
     if (i >= 0) volumes.splice(i, 1);
     var si = selection.indexOf(vol);
@@ -1262,7 +1295,11 @@
         normals: Array.prototype.slice.call(v.mesh.geometry.attributes.normal.array)
       };
     }
-    return { kind: "box", x: v.mesh.position.x, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y, c: v.color, layerId: v.layerId, groupId: v.groupId };
+    return {
+      kind: "box", x: v.mesh.position.x, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y,
+      c: v.color, faceColors: v.mesh.material.map(function (m) { return "#" + m.color.getHexString(); }),
+      layerId: v.layerId, groupId: v.groupId
+    };
   }
   function restoreVolume(s) {
     if (s.kind === "csg") {
@@ -1272,6 +1309,7 @@
       return addCompoundVolume(geo, s.c, s.layerId, s.groupId);
     }
     var v = makeVolume(s.x - s.w / 2, s.z - s.d / 2, s.w, s.d, s.h, s.c);
+    if (s.faceColors) v.mesh.material.forEach(function (m, i) { m.color.set(s.faceColors[i]); });
     v.layerId = s.layerId !== undefined ? s.layerId : v.layerId;
     v.groupId = s.groupId !== undefined ? s.groupId : v.groupId;
     v.mesh.visible = layerOf(v).visible;
@@ -1286,25 +1324,69 @@
     var state = undoStack.pop();
     clearAll();
     state.forEach(restoreVolume);
+    persistState();
+  }
+
+  // ---- Persistence: the drawing survives a page reload, "New drawing" clears it for good ----
+  var STORAGE_KEY = "ritbord_state_v1";
+  function persistState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        volumes: volumes.map(describeVolume),
+        layers: layers,
+        groups: groups,
+        activeLayerId: activeLayerId,
+        nextLayerId: nextLayerId,
+        nextGroupId: nextGroupId
+      }));
+    } catch (err) { /* storage unavailable or full, drawing just won't survive a reload */ }
+  }
+  function loadPersistedState() {
+    var raw;
+    try { raw = localStorage.getItem(STORAGE_KEY); } catch (err) { return false; }
+    if (!raw) return false;
+    var data;
+    try { data = JSON.parse(raw); } catch (err) { return false; }
+    if (!data || !Array.isArray(data.volumes)) return false;
+    if (data.layers && data.layers.length) layers = data.layers;
+    groups = data.groups || [];
+    activeLayerId = data.activeLayerId || layers[0].id;
+    nextLayerId = data.nextLayerId || (Math.max.apply(null, layers.map(function (l) { return l.id; })) + 1);
+    nextGroupId = data.nextGroupId || (groups.length ? Math.max.apply(null, groups.map(function (g) { return g.id; })) + 1 : 1);
+    data.volumes.forEach(restoreVolume);
+    return true;
+  }
+  function newDrawing() {
+    if (volumes.length && !window.confirm("Start a new drawing? Everything unsaved will be lost.")) return;
+    clearAll();
+    layers = [{ id: 1, name: "Layer 1", visible: true, locked: false }];
+    nextLayerId = 2;
+    activeLayerId = 1;
+    groups = [];
+    nextGroupId = 1;
+    undoStack = [];
+    try { localStorage.removeItem(STORAGE_KEY); } catch (err) {}
+    clearSelection();
+    renderLayers();
   }
 
   // ---- Subtract (real boolean CSG) ----
   function subtractSelected() {
     if (selection.length !== 2) {
-      setHint("Markera formen som ska behållas, skift-klicka den som ska skäras bort");
+      setHint("Select the shape to keep, shift-click the one to cut away");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
       return;
     }
     var keep = selection[0], cut = selection[1];
     if (isLocked(keep) || isLocked(cut)) {
-      setHint("En av formerna är låst (grupp eller lager)");
+      setHint("One of the shapes is locked (group or layer)");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
       return;
     }
     var box1 = new THREE.Box3().setFromObject(keep.mesh);
     var box2 = new THREE.Box3().setFromObject(cut.mesh);
     if (!box1.intersectsBox(box2)) {
-      setHint("Formerna överlappar inte, inget att skära bort");
+      setHint("The shapes don't overlap, nothing to cut away");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
       return;
     }
@@ -1312,17 +1394,19 @@
     var a = CSG.fromPolygons(meshToCSGPolygons(keep.mesh));
     var b = CSG.fromPolygons(meshToCSGPolygons(cut.mesh));
     var resultPolygons = a.subtract(b).toPolygons();
-    var color = keep.color, layerId = keep.layerId, groupId = keep.groupId;
+    var color = representativeColor(keep), layerId = keep.layerId, groupId = keep.groupId;
     removeVolume(keep);
     removeVolume(cut);
     if (!resultPolygons.length) {
       clearSelection();
+      persistState();
       return;
     }
     var geo = csgPolygonsToGeometry(resultPolygons);
     geo.computeBoundingSphere();
     var vol = addCompoundVolume(geo, color, layerId, groupId);
     selectSingle(vol);
+    persistState();
   }
 
   // ---- Chamfer (verified via corner box ∩ diamond-prism intersection, one per axis) ----
@@ -1357,13 +1441,13 @@
 
   function chamferSelected() {
     if (selection.length !== 1 || selection[0].isCompound) {
-      setHint("Markera en enkel lådform (inte redan subtraherad/fasad) för att fasa");
+      setHint("Select a simple box shape (not already subtracted/chamfered) to chamfer");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
       return;
     }
     var v = selection[0];
     if (isLocked(v)) {
-      setHint("Formen är låst (grupp eller lager)");
+      setHint("The shape is locked (group or layer)");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
       return;
     }
@@ -1371,10 +1455,11 @@
     var bevel = half * 0.18;
     snapshot();
     var geo = chamferGeometry(v.mesh, bevel);
-    var color = v.color, layerId = v.layerId, groupId = v.groupId;
+    var color = representativeColor(v), layerId = v.layerId, groupId = v.groupId;
     removeVolume(v);
     var vol = addCompoundVolume(geo, color, layerId, groupId);
     selectSingle(vol);
+    persistState();
   }
 
   // ---- Groups ----
@@ -1384,31 +1469,33 @@
       if (groupMembers(gid).length === selection.length) {
         groupMembers(gid).forEach(function (v) { v.groupId = null; });
         groups = groups.filter(function (g) { return g.id !== gid; });
-        setHint("Grupp upplöst");
+        setHint("Group dissolved");
         setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+        persistState();
         return;
       }
     }
     if (selection.length < 2) {
-      setHint("Markera minst två former (skift-klick) för att gruppera");
+      setHint("Select at least two shapes (shift-click) to group");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
       return;
     }
     if (selection.some(isLocked)) {
-      setHint("Kan inte gruppera låsta former");
+      setHint("Can't group locked shapes");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
       return;
     }
     var newGid = nextGroupId++;
     groups.push({ id: newGid, locked: false });
     selection.forEach(function (v) { v.groupId = newGid; });
-    setHint("Grupperade " + selection.length + " former");
+    setHint("Grouped " + selection.length + " shapes");
     setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+    persistState();
   }
 
   function toggleLockSelectedGroup() {
     if (!selection.length || !selection[0].groupId || !selection.every(function (v) { return v.groupId === selection[0].groupId; })) {
-      setHint("Markera en hel grupp först (klicka en gruppmedlem)");
+      setHint("Select a whole group first (click a group member)");
       setTimeout(function () { setHint(HINTS[tool] || ""); }, 2400);
       return;
     }
@@ -1416,8 +1503,9 @@
     if (!g) return;
     g.locked = !g.locked;
     refreshSelectionOutlines();
-    setHint(g.locked ? "Gruppen låst" : "Gruppen upplåst");
+    setHint(g.locked ? "Group locked" : "Group unlocked");
     setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+    persistState();
   }
 
   // ---- HUD ----
@@ -1439,11 +1527,11 @@
   var toolButtons = Array.prototype.slice.call(document.querySelectorAll(".tool-btn[data-tool]"));
 
   var HINTS = {
-    select: "Klicka för att välja (skift för flera), dra på tomt golv för att rotera",
-    rectangle: "Dra på golvet för en ny form, eller dra direkt på en yta för att skissa på den",
-    pushpull: "Dra en yta utåt för att bygga ut, inåt för att skära av eller skära in",
-    move: "Dra en markerad form för att flytta den, skift-klick väljer flera",
-    paint: "Klicka en form, välj sedan en färg till höger"
+    select: "Click to select (shift for multiple), drag empty floor to orbit",
+    rectangle: "Drag on the floor for a new shape, or drag directly on a surface to sketch on it",
+    pushpull: "Drag a surface outward to extend, inward to cut back or cut in",
+    move: "Drag a selected shape to move it, shift-click selects multiple",
+    paint: "Click a shape, then pick a color on the right"
   };
 
   function setTool(next) {
@@ -1467,7 +1555,7 @@
   });
   document.querySelector('[data-action="undo"]').addEventListener("click", undo);
   document.querySelector('[data-action="clear"]').addEventListener("click", function () {
-    if (volumes.length && window.confirm("Rensa alla former?")) { snapshot(); clearAll(); }
+    if (volumes.length && window.confirm("Clear all shapes?")) { snapshot(); clearAll(); persistState(); }
   });
 
   // ---- Layers panel ----
@@ -1498,6 +1586,7 @@
         l.visible = !l.visible;
         applyLayerVisibility();
         renderLayers();
+        persistState();
       });
 
       var lockBtn = document.createElement("button");
@@ -1509,6 +1598,7 @@
         e.stopPropagation();
         l.locked = !l.locked;
         renderLayers();
+        persistState();
       });
 
       row.appendChild(nameSpan);
@@ -1530,6 +1620,7 @@
     layers.push({ id: id, name: "Lager " + id, visible: true, locked: false });
     activeLayerId = id;
     renderLayers();
+    persistState();
   });
 
   // ---- Import: paste a JSON wall/box list, built on the active layer ----
@@ -1538,21 +1629,21 @@
     try {
       data = JSON.parse(importTextEl.value);
     } catch (err) {
-      importErrorEl.textContent = "Ogiltig JSON: " + err.message;
+      importErrorEl.textContent = "Invalid JSON: " + err.message;
       return;
     }
     if (!Array.isArray(data) || !data.length) {
-      importErrorEl.textContent = "Förväntade en lista med minst en form.";
+      importErrorEl.textContent = "Expected a list with at least one shape.";
       return;
     }
     if (activeLayer().locked) {
-      importErrorEl.textContent = "Aktivt lager är låst, välj eller skapa ett annat lager först.";
+      importErrorEl.textContent = "Active layer is locked, choose or create another layer first.";
       return;
     }
     for (var i = 0; i < data.length; i++) {
       var it = data[i];
       if (typeof it.x !== "number" || typeof it.z !== "number" || typeof it.w !== "number" || typeof it.d !== "number" || typeof it.h !== "number") {
-        importErrorEl.textContent = "Form " + (i + 1) + " saknar x/z/w/d/h som tal.";
+        importErrorEl.textContent = "Shape " + (i + 1) + " is missing x/z/w/d/h as numbers.";
         return;
       }
     }
@@ -1567,6 +1658,7 @@
     importTextEl.value = "";
     setSelection(created);
     renderLayers();
+    persistState();
   }
   importCancelEl.addEventListener("click", function () {
     importPanelEl.classList.remove("visible");
@@ -1601,6 +1693,8 @@
   });
 
   setTool("rectangle");
+  loadPersistedState();
+  document.querySelector('[data-action="newdrawing"]').addEventListener("click", newDrawing);
 
   // ---- Pointer interaction ----
   var raycaster = new THREE.Raycaster();
@@ -1805,7 +1899,7 @@
       var faceHit = volumeHit(e);
       var fa = faceHit ? faceAxisFromNormal(faceHit.face.normal) : null;
       if (faceHit && fa && isLocked(volumeOf(faceHit.object))) {
-        setHint("Formen är låst (grupp eller lager)");
+        setHint("The shape is locked (group or layer)");
         setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
         return;
       }
@@ -1830,7 +1924,7 @@
         return;
       }
       if (activeLayer().locked) {
-        setHint("Aktivt lager är låst, byt lager i Lager-panelen");
+        setHint("Active layer is locked, switch layers in the Layers panel");
         setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
         return;
       }
@@ -1863,14 +1957,14 @@
       var hit = volumeHit(e);
       var hitVol = hit ? volumeOf(hit.object) : null;
       if (hit && hitVol && isLocked(hitVol)) {
-        setHint("Formen är låst (grupp eller lager)");
+        setHint("The shape is locked (group or layer)");
         setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
         return;
       }
       if (hit && hitVol && hitVol.isCompound) {
         var faCompound = faceAxisFromNormal(hit.face.normal);
         if (!faCompound) {
-          setHint("Den ytan är fasad/diagonal, går inte att trycka på än");
+          setHint("That surface is chamfered/diagonal, can't push/pull it yet");
           setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
           return;
         }
@@ -1908,13 +2002,12 @@
       if (hit2) {
         var v2 = volumeOf(hit2.object);
         if (isLocked(v2)) {
-          setHint("Formen är låst (grupp eller lager)");
+          setHint("The shape is locked (group or layer)");
           setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
           return;
         }
         snapshot();
-        v2.color = activeSwatch;
-        v2.mesh.material.color.set(activeSwatch);
+        paintFace(v2, hit2, activeSwatch);
         paintDragActive = true;
         renderer.domElement.setPointerCapture(e.pointerId);
       }
@@ -1929,7 +2022,7 @@
 
       if (tool === "move" && v3) {
         if (isLocked(v3)) {
-          setHint("Formen är låst (grupp eller lager)");
+          setHint("The shape is locked (group or layer)");
           setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
           return;
         }
@@ -2053,8 +2146,7 @@
       var hit = volumeHit(e);
       if (hit) {
         var v = volumeOf(hit.object);
-        v.color = activeSwatch;
-        v.mesh.material.color.set(activeSwatch);
+        if (!isLocked(v)) paintFace(v, hit, activeSwatch);
       }
     }
   }
@@ -2119,7 +2211,7 @@
         var targetCSG = CSG.fromPolygons(meshToCSGPolygons(targetVol.mesh));
         var opCSG = CSG.fromPolygons(meshToCSGPolygons(opMesh));
         var resultCSG = depthFinal > 0 ? targetCSG.union(opCSG) : targetCSG.subtract(opCSG);
-        var color = targetVol.color;
+        var color = representativeColor(targetVol);
         removeVolume(targetVol);
         clearPendingSketch();
         var resultPolys = resultCSG.toPolygons();
@@ -2138,6 +2230,7 @@
     if (moving) { moving = null; }
     if (paintDragActive) { paintDragActive = false; }
     try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
+    persistState();
   }
 
   var dom = renderer.domElement;
