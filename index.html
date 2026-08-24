@@ -1477,7 +1477,7 @@
         nextGroupId: nextGroupId,
         guides: guides,
         nextGuideId: nextGuideId,
-        props: props.map(function (p) { return { type: p.type, x: p.group.position.x, z: p.group.position.z }; })
+        props: props.map(function (p) { return { type: p.type, x: p.group.position.x, y: p.group.position.y, z: p.group.position.z }; })
       }));
     } catch (err) { /* storage unavailable or full, drawing just won't survive a reload */ }
   }
@@ -1497,7 +1497,7 @@
     if (Array.isArray(data.guides)) { guides = data.guides; renderGuideLines(); }
     if (data.nextGuideId) nextGuideId = data.nextGuideId;
     if (Array.isArray(data.props)) {
-      data.props.forEach(function (p) { placeProp(p.type, { x: p.x, z: p.z }); });
+      data.props.forEach(function (p) { placeProp(p.type, { x: p.x, y: p.y, z: p.z }); });
       selectProp(null);
     }
     return true;
@@ -1679,7 +1679,7 @@
     select: "Click to select (shift for multiple), drag empty floor to orbit",
     rectangle: "Drag on the floor for a new shape, or drag directly on a surface to sketch on it",
     pushpull: "Drag a surface outward to extend, inward to cut back or cut in",
-    move: "Drag a selected shape to move it, shift-click selects multiple",
+    move: "Drag a shape or a placed figure to move it (figures can stand on any floor), shift-click selects multiple shapes",
     paint: "Click a shape, then pick a color on the right",
     line: "Click points to sketch a shape, click near the start (or press Enter) to close it",
     circle: "Drag from the center to set the radius",
@@ -1905,6 +1905,7 @@
   var drawing = null;      // { startX, startZ, vol }
   var pulling = null;      // { vol, plane, axis, sign, fixedPos, facePos0 }
   var moving = null;       // { startPoint, items: [{vol, x0, z0}] }
+  var movingProp = null;   // { entry, group }
   var faceDrawing = null;  // { targetVol, axis, sign, faceOffset, plane, startU, startV, mesh }
   var sketchPull = null;   // { plane, normal, hitPoint, depth0 }
   var paintDragActive = false;
@@ -2019,6 +2020,7 @@
     if (faceDrawing) { scene.remove(faceDrawing.mesh); faceDrawing.mesh.material.dispose(); faceDrawing = null; }
     if (sketchPull) { sketchPull = null; }
     if (moving) { moving = null; }
+    if (movingProp) { movingProp = null; }
     paintDragActive = false;
     orbiting = false; panning = false;
     stageEl.classList.remove("dragging");
@@ -2180,8 +2182,43 @@
     return finishProp(g);
   }
 
-  function buildChild() {
-    return finishProp(buildPersonBase(1.05, 0.10, 0x8ec2ea, 0xe0c86a));
+  function addPonytail(g, scale) {
+    var hr = g.userData.headRadius, hc = g.userData.headCenter;
+    var tail = new THREE.Mesh(new THREE.SphereGeometry(hr * 0.32, 10, 8), propMat(PROP_COLORS.hair));
+    tail.scale.set(0.7 * scale, 1.8 * scale, 0.7 * scale);
+    tail.position.set(hc.x, hc.y - hr * 0.1, hc.z - hr * 0.95);
+    g.add(tail);
+  }
+
+  function addCap(g, capColor) {
+    var hr = g.userData.headRadius, hc = g.userData.headCenter;
+    var mat = propMat(capColor);
+    var crown = new THREE.Mesh(new THREE.SphereGeometry(hr * 1.1, 14, 10), mat);
+    crown.scale.set(1, 0.65, 1);
+    crown.position.set(hc.x, hc.y + hr * 0.35, hc.z);
+    g.add(crown);
+    var brim = new THREE.Mesh(new THREE.CylinderGeometry(hr * 0.75, hr * 0.75, hr * 0.06, 16), mat);
+    brim.position.set(hc.x, hc.y + hr * 0.15, hc.z - hr * 0.85);
+    brim.rotation.x = Math.PI * 0.42;
+    g.add(brim);
+  }
+
+  function buildGirl9() {
+    var g = buildPersonBase(1.33, 0.105, 0xd98fae, 0xd98fae);
+    addPonytail(g, 0.75);
+    return finishProp(g);
+  }
+
+  function buildBoy5() {
+    var g = buildPersonBase(1.11, 0.095, 0x6fa8dc, 0x3c3f4a);
+    addCap(g, 0xd9a53c);
+    return finishProp(g);
+  }
+
+  function buildGirl3() {
+    var g = buildPersonBase(0.96, 0.085, 0xf2b6c6, 0xf2b6c6);
+    addPonytail(g, 0.55);
+    return finishProp(g);
   }
 
   function buildDog() {
@@ -2270,17 +2307,19 @@
   }
 
   var PROP_BUILDERS = {
-    man: buildMan, woman: buildWoman, child: buildChild, dog: buildDog,
+    man: buildMan, woman: buildWoman, girl9: buildGirl9, boy5: buildBoy5, girl3: buildGirl3, dog: buildDog,
     pine: buildPineTree, cypress: buildCypress, car: buildCar, bicycle: buildBicycle
   };
   var PROP_LABELS = {
-    man: "Man (hat)", woman: "Woman (bun)", child: "Child", dog: "Dog",
+    man: "Man (hat)", woman: "Woman (bun)", girl9: "Girl, 9y", boy5: "Boy, 5y (cap)", girl3: "Girl, 3y", dog: "Dog",
     pine: "Pine tree", cypress: "Cypress", car: "Car", bicycle: "Bicycle"
   };
   var PROP_ICONS = {
     man: '<circle cx="12" cy="7" r="3"/><path d="M12 10v7M8 13h8M9 21l3-4 3 4"/>',
     woman: '<circle cx="12" cy="7" r="3"/><path d="M9 21l3-10 3 10M9 13h6"/>',
-    child: '<circle cx="12" cy="8" r="2.4"/><path d="M12 10.4v5M9.5 21l2.5-5.6 2.5 5.6"/>',
+    girl9: '<circle cx="12" cy="7" r="2.6"/><path d="M14.4 6.2c1 .3 1.3 1.6.6 2.6" stroke-linecap="round"/><path d="M12 9.6v6M10 21l2-5.4 2 5.4M10 12.5h4"/>',
+    boy5: '<path d="M8.6 7.2a3.4 3.4 0 016.8 0" stroke-linecap="round"/><circle cx="12" cy="8.4" r="2.4"/><path d="M12 10.8v5M9.6 21l2.4-5 2.4 5"/>',
+    girl3: '<circle cx="12" cy="8" r="2.2"/><path d="M13.9 7.3c.8.3 1 1.3.4 2" stroke-linecap="round"/><path d="M12 10.2v4.8M10.4 21l1.6-4.4 1.6 4.4"/>',
     dog: '<ellipse cx="11" cy="14" rx="6" ry="3"/><circle cx="18" cy="12" r="2.6"/><path d="M6 17v3M10 17v3M14 16v3"/>',
     pine: '<path d="M12 2l4 6h-2l3.5 5H15l3.5 6H5.5L9 13H7L10.5 8H8.5z"/><path d="M12 21v-3" stroke-dasharray="0"/>',
     cypress: '<path d="M12 2c3 4 3 14 0 19-3-5-3-15 0-19z"/>',
@@ -2313,7 +2352,7 @@
     var builder = PROP_BUILDERS[type];
     if (!builder) return null;
     var group = builder();
-    group.position.set(point.x, 0, point.z);
+    group.position.set(point.x, point.y || 0, point.z);
     scene.add(group);
     var entry = { id: nextPropId++, type: type, group: group };
     props.push(entry);
@@ -2344,6 +2383,24 @@
       p.group.traverse(function (o) { if (o === hitMesh) found = true; });
       return found;
     })[0] || null;
+  }
+
+  // where a prop should land: on top of any visible volume's upward-facing surface
+  // (so a figure can stand on an upper floor slab), never on a wall's side face,
+  // falling back to the ground plane if nothing usable is under the cursor
+  function propSurfaceHit(e) {
+    updatePointer(e);
+    raycaster.setFromCamera(pointerNDC, camera);
+    var meshes = volumes.filter(function (v) { return layerOf(v).visible; }).map(function (v) { return v.mesh; });
+    var hits = raycaster.intersectObjects(meshes, false);
+    for (var i = 0; i < hits.length; i++) {
+      if (hits[i].face.normal.y > 0.5) {
+        var p = hits[i].point.clone();
+        if (guides.length) { p.x = snapCoord(p.x, "x"); p.z = snapCoord(p.z, "z"); }
+        return p;
+      }
+    }
+    return groundHit(e);
   }
 
   propGridEl.innerHTML = "";
@@ -2611,6 +2668,19 @@
         }
       }
 
+      if (tool === "move" && !v3) {
+        var movePropEntry = propHit(e);
+        if (movePropEntry) {
+          selectProp(movePropEntry);
+          var mpStart = propSurfaceHit(e);
+          if (mpStart) {
+            movingProp = { entry: movePropEntry, group: movePropEntry.group };
+            renderer.domElement.setPointerCapture(e.pointerId);
+            return;
+          }
+        }
+      }
+
       selectSingle(v3);
       orbiting = true;
       orbitStart.x = e.clientX; orbitStart.y = e.clientY;
@@ -2678,7 +2748,7 @@
         finalizeTape(tp);
       }
     } else if (tool === "place-prop" && armedProp) {
-      var pp = groundHit(e);
+      var pp = propSurfaceHit(e);
       if (!pp) return;
       placeProp(armedProp, pp);
     }
@@ -2827,6 +2897,15 @@
       return;
     }
 
+    if (movingProp) {
+      var mpp = propSurfaceHit(e);
+      if (mpp) {
+        movingProp.group.position.set(mpp.x, mpp.y, mpp.z);
+        propOutline.setFromObject(movingProp.group);
+      }
+      return;
+    }
+
     if (paintDragActive && tool === "paint") {
       var hit = volumeHit(e);
       if (hit) {
@@ -2931,6 +3010,7 @@
     }
 
     if (moving) { moving = null; }
+    if (movingProp) { movingProp = null; persistState(); }
     if (paintDragActive) { paintDragActive = false; }
     try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
     persistState();
