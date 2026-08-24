@@ -383,6 +383,11 @@
       Färg
     </button>
     <span class="tool-sep"></span>
+    <button class="tool-btn" data-action="subtract" title="Subtrahera: markera formen som blir kvar, skift-klicka den som skärs bort">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><rect x="9" y="9" width="12" height="12" rx="1" stroke-dasharray="2.5 2.5"/></svg>
+      Subtrahera
+    </button>
+    <span class="tool-sep"></span>
     <button class="tool-btn" data-action="undo" title="Ångra (Cmd/Ctrl+Z)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7L3 11l4 4"/><path d="M3 11h11a6 6 0 010 12h-2"/></svg>
       Ångra
@@ -458,6 +463,169 @@
 
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // ---- Minimal BSP CSG (Evan Wallace's algorithm) for real boolean subtract ----
+  var CSG = (function () {
+    var EPS = 1e-5, COPLANAR = 0, FRONT = 1, BACK = 2, SPANNING = 3;
+
+    function Vertex(pos, normal) { this.pos = pos.clone(); this.normal = normal.clone(); }
+    Vertex.prototype.clone = function () { return new Vertex(this.pos, this.normal); };
+    Vertex.prototype.flip = function () { this.normal.negate(); };
+    Vertex.prototype.interpolate = function (o, t) {
+      return new Vertex(this.pos.clone().lerp(o.pos, t), this.normal.clone().lerp(o.normal, t));
+    };
+
+    function Plane(normal, w) { this.normal = normal; this.w = w; }
+    Plane.fromPoints = function (a, b, c) {
+      var n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
+      return new Plane(n, n.dot(a));
+    };
+    Plane.prototype.clone = function () { return new Plane(this.normal.clone(), this.w); };
+    Plane.prototype.flip = function () { this.normal.negate(); this.w = -this.w; };
+    Plane.prototype.splitPolygon = function (poly, coplanarFront, coplanarBack, front, back) {
+      var polygonType = 0, types = [];
+      for (var i = 0; i < poly.vertices.length; i++) {
+        var t = this.normal.dot(poly.vertices[i].pos) - this.w;
+        var type = t < -EPS ? BACK : t > EPS ? FRONT : COPLANAR;
+        polygonType |= type;
+        types.push(type);
+      }
+      switch (polygonType) {
+        case COPLANAR:
+          (this.normal.dot(poly.plane.normal) > 0 ? coplanarFront : coplanarBack).push(poly);
+          break;
+        case FRONT: front.push(poly); break;
+        case BACK: back.push(poly); break;
+        case SPANNING:
+          var f = [], b = [];
+          for (var i2 = 0; i2 < poly.vertices.length; i2++) {
+            var j = (i2 + 1) % poly.vertices.length;
+            var ti = types[i2], tj = types[j];
+            var vi = poly.vertices[i2], vj = poly.vertices[j];
+            if (ti !== BACK) f.push(vi);
+            if (ti !== FRONT) b.push(ti !== BACK ? vi.clone() : vi);
+            if ((ti | tj) === SPANNING) {
+              var tt = (this.w - this.normal.dot(vi.pos)) / this.normal.dot(new THREE.Vector3().subVectors(vj.pos, vi.pos));
+              var v = vi.interpolate(vj, tt);
+              f.push(v); b.push(v.clone());
+            }
+          }
+          if (f.length >= 3) front.push(new Polygon(f));
+          if (b.length >= 3) back.push(new Polygon(b));
+          break;
+      }
+    };
+
+    function Polygon(vertices) {
+      this.vertices = vertices;
+      this.plane = Plane.fromPoints(vertices[0].pos, vertices[1].pos, vertices[2].pos);
+    }
+    Polygon.prototype.clone = function () { return new Polygon(this.vertices.map(function (v) { return v.clone(); })); };
+    Polygon.prototype.flip = function () {
+      this.vertices.reverse();
+      this.vertices.forEach(function (v) { v.flip(); });
+      this.plane.flip();
+    };
+
+    function Node(polygons) {
+      this.plane = null; this.front = null; this.back = null; this.polygons = [];
+      if (polygons) this.build(polygons);
+    }
+    Node.prototype.invert = function () {
+      this.polygons.forEach(function (p) { p.flip(); });
+      this.plane.flip();
+      if (this.front) this.front.invert();
+      if (this.back) this.back.invert();
+      var tmp = this.front; this.front = this.back; this.back = tmp;
+    };
+    Node.prototype.clipPolygons = function (polygons) {
+      if (!this.plane) return polygons.slice();
+      var front = [], back = [];
+      for (var i = 0; i < polygons.length; i++) this.plane.splitPolygon(polygons[i], front, back, front, back);
+      if (this.front) front = this.front.clipPolygons(front);
+      back = this.back ? this.back.clipPolygons(back) : [];
+      return front.concat(back);
+    };
+    Node.prototype.clipTo = function (bsp) {
+      this.polygons = bsp.clipPolygons(this.polygons);
+      if (this.front) this.front.clipTo(bsp);
+      if (this.back) this.back.clipTo(bsp);
+    };
+    Node.prototype.allPolygons = function () {
+      var polygons = this.polygons.slice();
+      if (this.front) polygons = polygons.concat(this.front.allPolygons());
+      if (this.back) polygons = polygons.concat(this.back.allPolygons());
+      return polygons;
+    };
+    Node.prototype.build = function (polygons) {
+      if (!polygons.length) return;
+      if (!this.plane) this.plane = polygons[0].plane.clone();
+      var front = [], back = [];
+      for (var i = 0; i < polygons.length; i++) this.plane.splitPolygon(polygons[i], this.polygons, this.polygons, front, back);
+      if (front.length) { if (!this.front) this.front = new Node(); this.front.build(front); }
+      if (back.length) { if (!this.back) this.back = new Node(); this.back.build(back); }
+    };
+
+    function CSGObj(polygons) { this.polygons = polygons || []; }
+    CSGObj.prototype.clone = function () { return new CSGObj(this.polygons.map(function (p) { return p.clone(); })); };
+    CSGObj.prototype.toPolygons = function () { return this.polygons; };
+    CSGObj.prototype.subtract = function (other) {
+      var a = new Node(this.clone().polygons);
+      var b = new Node(other.clone().polygons);
+      a.invert();
+      a.clipTo(b);
+      b.clipTo(a);
+      b.invert();
+      b.clipTo(a);
+      b.invert();
+      a.build(b.allPolygons());
+      a.invert();
+      return new CSGObj(a.allPolygons());
+    };
+
+    return { Vertex: Vertex, Polygon: Polygon, fromPolygons: function (p) { return new CSGObj(p); } };
+  })();
+
+  function meshToCSGPolygons(mesh) {
+    mesh.updateMatrixWorld(true);
+    var geo = mesh.geometry, pos = geo.attributes.position, nrm = geo.attributes.normal, idx = geo.index;
+    var m = mesh.matrixWorld;
+    var normalMatrix = new THREE.Matrix3().getNormalMatrix(m);
+    function vertexAt(i) {
+      var p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m);
+      var n = nrm ? new THREE.Vector3().fromBufferAttribute(nrm, i).applyMatrix3(normalMatrix).normalize() : new THREE.Vector3(0, 1, 0);
+      return new CSG.Vertex(p, n);
+    }
+    var triCount = idx ? idx.count / 3 : pos.count / 3;
+    var polygons = [];
+    for (var t = 0; t < triCount; t++) {
+      var a = idx ? idx.getX(t * 3) : t * 3;
+      var b = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
+      var c = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+      var va = vertexAt(a), vb = vertexAt(b), vc = vertexAt(c);
+      var e1 = new THREE.Vector3().subVectors(vb.pos, va.pos);
+      var e2 = new THREE.Vector3().subVectors(vc.pos, va.pos);
+      if (e1.clone().cross(e2).lengthSq() < 1e-12) continue;
+      polygons.push(new CSG.Polygon([va, vb, vc]));
+    }
+    return polygons;
+  }
+
+  function csgPolygonsToGeometry(polygons) {
+    var positions = [], normals = [];
+    polygons.forEach(function (poly) {
+      for (var i = 2; i < poly.vertices.length; i++) {
+        [poly.vertices[0], poly.vertices[i - 1], poly.vertices[i]].forEach(function (v) {
+          positions.push(v.pos.x, v.pos.y, v.pos.z);
+          normals.push(v.normal.x, v.normal.y, v.normal.z);
+        });
+      }
+    });
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+    return geo;
   }
 
   // ---- Three.js scene ----
@@ -705,7 +873,14 @@
       return o;
     });
     if (selection.length === 1) {
-      showDims(selection[0].mesh.scale.x, selection[0].mesh.scale.z, selection[0].mesh.scale.y);
+      var v = selection[0];
+      if (v.isCompound) {
+        var bb = new THREE.Box3().setFromObject(v.mesh);
+        var size = bb.getSize(new THREE.Vector3());
+        showDims(size.x, size.z, size.y);
+      } else {
+        showDims(v.mesh.scale.x, v.mesh.scale.z, v.mesh.scale.y);
+      }
     } else {
       hideDims();
     }
@@ -732,9 +907,21 @@
     return vol;
   }
 
+  function addCompoundVolume(geo, colorHex) {
+    var mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.92, metalness: 0 });
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    var vol = { mesh: mesh, color: colorHex, isCompound: true };
+    volumes.push(vol);
+    return vol;
+  }
+
   function removeVolume(vol) {
     scene.remove(vol.mesh);
     vol.mesh.material.dispose();
+    vol.mesh.geometry.dispose();
     var i = volumes.indexOf(vol);
     if (i >= 0) volumes.splice(i, 1);
     var si = selection.indexOf(vol);
@@ -747,19 +934,67 @@
 
   // ---- Undo ----
   var undoStack = [];
+  function describeVolume(v) {
+    if (v.isCompound) {
+      return {
+        kind: "csg",
+        c: v.color,
+        positions: Array.prototype.slice.call(v.mesh.geometry.attributes.position.array),
+        normals: Array.prototype.slice.call(v.mesh.geometry.attributes.normal.array)
+      };
+    }
+    return { kind: "box", x: v.mesh.position.x, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y, c: v.color };
+  }
+  function restoreVolume(s) {
+    if (s.kind === "csg") {
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(s.positions, 3));
+      geo.setAttribute("normal", new THREE.Float32BufferAttribute(s.normals, 3));
+      return addCompoundVolume(geo, s.c);
+    }
+    return makeVolume(s.x - s.w / 2, s.z - s.d / 2, s.w, s.d, s.h, s.c);
+  }
   function snapshot() {
-    undoStack.push(volumes.map(function (v) {
-      return { x: v.mesh.position.x, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y, c: v.color };
-    }));
+    undoStack.push(volumes.map(describeVolume));
     if (undoStack.length > 40) undoStack.shift();
   }
   function undo() {
     if (!undoStack.length) return;
     var state = undoStack.pop();
     clearAll();
-    state.forEach(function (s) {
-      makeVolume(s.x - s.w / 2, s.z - s.d / 2, s.w, s.d, s.h, s.c);
-    });
+    state.forEach(restoreVolume);
+  }
+
+  // ---- Subtract (real boolean CSG) ----
+  function subtractSelected() {
+    if (selection.length !== 2) {
+      setHint("Markera formen som ska behållas, skift-klicka den som ska skäras bort");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
+      return;
+    }
+    var keep = selection[0], cut = selection[1];
+    var box1 = new THREE.Box3().setFromObject(keep.mesh);
+    var box2 = new THREE.Box3().setFromObject(cut.mesh);
+    if (!box1.intersectsBox(box2)) {
+      setHint("Formerna överlappar inte, inget att skära bort");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
+      return;
+    }
+    snapshot();
+    var a = CSG.fromPolygons(meshToCSGPolygons(keep.mesh));
+    var b = CSG.fromPolygons(meshToCSGPolygons(cut.mesh));
+    var resultPolygons = a.subtract(b).toPolygons();
+    var color = keep.color;
+    removeVolume(keep);
+    removeVolume(cut);
+    if (!resultPolygons.length) {
+      clearSelection();
+      return;
+    }
+    var geo = csgPolygonsToGeometry(resultPolygons);
+    geo.computeBoundingSphere();
+    var vol = addCompoundVolume(geo, color);
+    selectSingle(vol);
   }
 
   // ---- HUD ----
@@ -798,6 +1033,7 @@
   toolButtons.forEach(function (b) {
     b.addEventListener("click", function () { setTool(b.dataset.tool); });
   });
+  document.querySelector('[data-action="subtract"]').addEventListener("click", subtractSelected);
   document.querySelector('[data-action="undo"]').addEventListener("click", undo);
   document.querySelector('[data-action="clear"]').addEventListener("click", function () {
     if (volumes.length && window.confirm("Rensa alla former?")) { snapshot(); clearAll(); }
@@ -931,6 +1167,12 @@
       renderer.domElement.setPointerCapture(e.pointerId);
     } else if (tool === "pushpull") {
       var hit = volumeHit(e);
+      var hitVol = hit ? volumeOf(hit.object) : null;
+      if (hit && hitVol && hitVol.isCompound) {
+        setHint("Sammansatta former (efter Subtrahera) kan inte dras än");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
       var face = hit ? pickFace(hit) : null;
       if (hit && face) {
         var v = volumeOf(hit.object);
