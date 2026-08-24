@@ -666,10 +666,10 @@
   <div class="help-panel import-panel" id="importPanel">
     <h2>Import drawing</h2>
     <p class="import-hint">
-      Paste a list of walls/shapes as JSON, one object per item: <code>x</code>/<code>z</code> is the corner with the lowest coordinate, <code>w</code>/<code>d</code>/<code>h</code> is width/depth/height in meters, <code>color</code> is optional.
+      Paste a list of walls/shapes as JSON, one object per item: <code>x</code>/<code>z</code> is the corner with the lowest coordinate, <code>w</code>/<code>d</code>/<code>h</code> is width/depth/height in meters, <code>y</code> is the optional base elevation (floor height, e.g. an upper storey), <code>color</code> is optional.
       Ask Claude to work out this list for you from measurements you describe.
     </p>
-    <textarea id="importText" spellcheck="false" placeholder='[{"x":0,"z":0,"w":6,"d":0.2,"h":2.5,"color":"#f4f0e6"}]'></textarea>
+    <textarea id="importText" spellcheck="false" placeholder='[{"x":0,"z":0,"y":0,"w":6,"d":0.2,"h":2.5,"color":"#f4f0e6"}]'></textarea>
     <div class="import-error" id="importError"></div>
     <div class="import-actions">
       <button class="tool-btn" id="importCancel">Cancel</button>
@@ -1223,14 +1223,14 @@
     return 5;
   }
 
-  function makeVolume(minX, minZ, w, d, h, colorHex) {
+  function makeVolume(minX, minZ, w, d, h, colorHex, baseY) {
     var mats = [];
     for (var i = 0; i < 6; i++) mats.push(new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.92, metalness: 0 }));
     var mesh = new THREE.Mesh(boxGeo, mats);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.scale.set(w, h, d);
-    mesh.position.set(minX + w / 2, 0, minZ + d / 2);
+    mesh.position.set(minX + w / 2, baseY || 0, minZ + d / 2);
     mesh.visible = activeLayer().visible;
     scene.add(mesh);
     var vol = { mesh: mesh, color: colorHex, layerId: activeLayerId, groupId: null };
@@ -1296,7 +1296,7 @@
       };
     }
     return {
-      kind: "box", x: v.mesh.position.x, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y,
+      kind: "box", x: v.mesh.position.x, y: v.mesh.position.y, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y,
       c: v.color, faceColors: v.mesh.material.map(function (m) { return "#" + m.color.getHexString(); }),
       layerId: v.layerId, groupId: v.groupId
     };
@@ -1308,7 +1308,7 @@
       geo.setAttribute("normal", new THREE.Float32BufferAttribute(s.normals, 3));
       return addCompoundVolume(geo, s.c, s.layerId, s.groupId);
     }
-    var v = makeVolume(s.x - s.w / 2, s.z - s.d / 2, s.w, s.d, s.h, s.c);
+    var v = makeVolume(s.x - s.w / 2, s.z - s.d / 2, s.w, s.d, s.h, s.c, s.y);
     if (s.faceColors) v.mesh.material.forEach(function (m, i) { m.color.set(s.faceColors[i]); });
     v.layerId = s.layerId !== undefined ? s.layerId : v.layerId;
     v.groupId = s.groupId !== undefined ? s.groupId : v.groupId;
@@ -1650,7 +1650,7 @@
     snapshot();
     var created = [];
     data.forEach(function (it) {
-      var vol = makeVolume(it.x, it.z, Math.max(it.w, 0.02), Math.max(it.d, 0.02), Math.max(it.h, 0.02), it.color || PALETTE[0]);
+      var vol = makeVolume(it.x, it.z, Math.max(it.w, 0.02), Math.max(it.d, 0.02), Math.max(it.h, 0.02), it.color || PALETTE[0], typeof it.y === "number" ? it.y : 0);
       created.push(vol);
     });
     importErrorEl.textContent = "";
