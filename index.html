@@ -1,4 +1,5 @@
 <title>Ritbord</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='8' width='48' height='48' rx='6' fill='%231f9e97'/%3E%3C/svg%3E">
 <style>
   :root {
     --paper: #f2ede1;
@@ -724,12 +725,13 @@
     <div class="help-row"><kbd>Layers panel</kbd><span>New layer, show/hide, lock a whole layer</span></div>
     <h3>Mouse</h3>
     <div class="help-row"><kbd>Left-click, drag</kbd><span>Active tool</span></div>
+    <div class="help-row"><kbd>Shift + left-click, drag</kbd><span>Pan</span></div>
     <div class="help-row"><kbd>Right-click, drag</kbd><span>Orbit around</span></div>
     <div class="help-row"><kbd>Middle button, drag</kbd><span>Pan</span></div>
     <div class="help-row"><kbd>Scroll wheel</kbd><span>Zoom</span></div>
     <h3>Touch</h3>
     <div class="help-row"><kbd>1 finger, drag</kbd><span>Active tool</span></div>
-    <div class="help-row"><kbd>2 fingers, drag</kbd><span>Orbit around</span></div>
+    <div class="help-row"><kbd>2 fingers, drag</kbd><span>Pan</span></div>
     <div class="help-row"><kbd>Pinch with 2 fingers</kbd><span>Zoom</span></div>
     <button class="tool-btn help-close" id="helpClose">Close</button>
   </div>
@@ -1052,24 +1054,25 @@
   );
   scene.add(sky);
 
-  var hemiLight = new THREE.HemisphereLight(0xfff3e0, 0x4a3f30, 0.55);
+  var hemiLight = new THREE.HemisphereLight(0xfff3e0, 0x4a3f30, 0.42);
   scene.add(hemiLight);
 
   var sunLight = new THREE.DirectionalLight(0xfff1dd, 1.05);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
-  sunLight.shadow.camera.left = -30;
-  sunLight.shadow.camera.right = 30;
-  sunLight.shadow.camera.top = 30;
-  sunLight.shadow.camera.bottom = -30;
+  sunLight.shadow.camera.left = -22;
+  sunLight.shadow.camera.right = 22;
+  sunLight.shadow.camera.top = 22;
+  sunLight.shadow.camera.bottom = -22;
   sunLight.shadow.camera.near = 1;
-  sunLight.shadow.camera.far = 90;
-  sunLight.shadow.bias = -0.0015;
-  sunLight.shadow.radius = 4;
+  sunLight.shadow.camera.far = 70;
+  sunLight.shadow.bias = -0.0003;
+  sunLight.shadow.normalBias = 0.025;
+  sunLight.shadow.radius = 1.6;
   scene.add(sunLight);
   scene.add(sunLight.target);
 
-  var fillLight = new THREE.DirectionalLight(0xdfe6ec, 0.22);
+  var fillLight = new THREE.DirectionalLight(0xdfe6ec, 0.16);
   fillLight.position.set(-8, 6, -9);
   scene.add(fillLight);
 
@@ -1337,8 +1340,57 @@
       hideDims();
     }
   }
-  function setSelection(list) { selection = list.slice(); refreshSelectionOutlines(); }
+  function setSelection(list) { selection = list.slice(); refreshSelectionOutlines(); hideFaceHighlight(); }
   function clearSelection() { setSelection([]); }
+
+  // single-face highlight: shown in the Select tool when a click lands on one
+  // face of a shape, so a face (not the whole box) reads as the current selection
+  var faceHighlightMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x1f9e97, transparent: true, opacity: 0.35, depthTest: false, side: THREE.DoubleSide })
+  );
+  faceHighlightMesh.renderOrder = 999;
+  faceHighlightMesh.visible = false;
+  faceHighlightMesh.matrixAutoUpdate = false;
+  scene.add(faceHighlightMesh);
+  var selectedFace = null; // { vol, axis, sign, faceOffset, w, h }
+
+  // every volume mesh keeps identity rotation (see wholeFaceFootprint), so the
+  // world-space face normal and its in-plane (u,v) axes are just world axes
+  var FACE_UV_AXES = {
+    x: [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)],
+    y: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1)],
+    z: [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)]
+  };
+  function showFaceHighlight(vol, hit) {
+    var fa = faceAxisFromNormal(hit.face.normal);
+    if (!fa) { hideFaceHighlight(); return false; }
+    var faceOffset = fa.axis === "x" ? hit.point.x : fa.axis === "y" ? hit.point.y : hit.point.z;
+    var fp = wholeFaceFootprint(vol.mesh, fa.axis, fa.sign, faceOffset);
+    if (!isFinite(fp.uMin)) { hideFaceHighlight(); return false; }
+    var b = boundsFromFace(fa.axis, fp.uMin, fp.uMax, fp.vMin, fp.vMax, faceOffset, faceOffset);
+    var center = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+    var normal = new THREE.Vector3(fa.axis === "x" ? fa.sign : 0, fa.axis === "y" ? fa.sign : 0, fa.axis === "z" ? fa.sign : 0);
+    center.addScaledVector(normal, 0.01);
+    var axes = FACE_UV_AXES[fa.axis];
+    var w = Math.max(fp.uMax - fp.uMin, 0.002), h = Math.max(fp.vMax - fp.vMin, 0.002);
+    var basis = new THREE.Matrix4().makeBasis(
+      axes[0].clone().multiplyScalar(w),
+      axes[1].clone().multiplyScalar(h),
+      normal
+    );
+    basis.setPosition(center);
+    faceHighlightMesh.matrix.copy(basis);
+    faceHighlightMesh.matrixWorld.copy(basis);
+    faceHighlightMesh.visible = true;
+    selectedFace = { vol: vol, axis: fa.axis, sign: fa.sign, faceOffset: faceOffset, w: w, h: h };
+    showDims(w, h, 0);
+    return true;
+  }
+  function hideFaceHighlight() {
+    faceHighlightMesh.visible = false;
+    selectedFace = null;
+  }
   function toggleInSelection(vol) {
     var i = selection.indexOf(vol);
     if (i >= 0) selection.splice(i, 1); else selection.push(vol);
@@ -1488,17 +1540,31 @@
     var data;
     try { data = JSON.parse(raw); } catch (err) { return false; }
     if (!data || !Array.isArray(data.volumes)) return false;
-    if (data.layers && data.layers.length) layers = data.layers;
-    groups = data.groups || [];
-    activeLayerId = data.activeLayerId || layers[0].id;
-    nextLayerId = data.nextLayerId || (Math.max.apply(null, layers.map(function (l) { return l.id; })) + 1);
-    nextGroupId = data.nextGroupId || (groups.length ? Math.max.apply(null, groups.map(function (g) { return g.id; })) + 1 : 1);
-    data.volumes.forEach(restoreVolume);
-    if (Array.isArray(data.guides)) { guides = data.guides; renderGuideLines(); }
-    if (data.nextGuideId) nextGuideId = data.nextGuideId;
-    if (Array.isArray(data.props)) {
-      data.props.forEach(function (p) { placeProp(p.type, { x: p.x, y: p.y, z: p.z }); });
-      selectProp(null);
+    // A single malformed saved shape/prop must never be able to abort this whole
+    // function part-way through: that would leave the scene half-restored AND skip
+    // every line of setup code below the call site (pointer/keyboard listeners,
+    // the render loop kickoff), which looks to the user like the app has frozen.
+    try {
+      if (data.layers && data.layers.length) layers = data.layers;
+      groups = data.groups || [];
+      activeLayerId = data.activeLayerId || layers[0].id;
+      nextLayerId = data.nextLayerId || (Math.max.apply(null, layers.map(function (l) { return l.id; })) + 1);
+      nextGroupId = data.nextGroupId || (groups.length ? Math.max.apply(null, groups.map(function (g) { return g.id; })) + 1 : 1);
+      data.volumes.forEach(function (s) {
+        try { restoreVolume(s); } catch (err) { console.warn("Skipped a corrupt saved shape", err); }
+      });
+      if (Array.isArray(data.guides)) { guides = data.guides; renderGuideLines(); }
+      if (data.nextGuideId) nextGuideId = data.nextGuideId;
+      if (Array.isArray(data.props)) {
+        data.props.forEach(function (p) {
+          try { placeProp(p.type, { x: p.x, y: p.y, z: p.z }); } catch (err) { console.warn("Skipped a corrupt saved prop", err); }
+        });
+        selectProp(null);
+      }
+    } catch (err) {
+      console.warn("Saved drawing was corrupt, starting fresh", err);
+      try { localStorage.removeItem(STORAGE_KEY); } catch (err2) {}
+      return false;
     }
     return true;
   }
@@ -1689,6 +1755,7 @@
   };
 
   function setTool(next) {
+    if (next !== "select") hideFaceHighlight();
     if (next !== "pushpull") clearPendingSketch();
     if (next !== "line") cancelLineDrawing();
     if (next !== "circle") cancelCircleDrawing();
@@ -2009,7 +2076,7 @@
     persistState();
   }
 
-  // ---- Multi-touch: 2-finger drag orbits, pinch zooms; takes over from whatever
+  // ---- Multi-touch: 2-finger drag pans, pinch zooms; takes over from whatever
   // single-finger gesture (if any) was mid-flight when the second finger landed ----
   var touchPoints = new Map(); // pointerId -> {x,y}
   var twoFinger = null;        // { lastMidX, lastMidY, lastDist }
@@ -2520,9 +2587,9 @@
   }
 
   function onPointerDown(e) {
-    if (e.button === 2 || e.button === 1) {
+    if (e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey)) {
       orbiting = e.button === 2;
-      panning = e.button === 1;
+      panning = e.button === 1 || (e.button === 0 && e.shiftKey);
       orbitStart.x = e.clientX; orbitStart.y = e.clientY;
       startTheta = theta; startPhi = phi;
       stageEl.classList.add("dragging");
@@ -2695,6 +2762,9 @@
       }
 
       selectSingle(v3);
+      if (tool === "select" && v3 && hit3 && selection.length === 1 && selection[0] === v3) {
+        showFaceHighlight(v3, hit3);
+      }
       orbiting = true;
       orbitStart.x = e.clientX; orbitStart.y = e.clientY;
       startTheta = theta; startPhi = phi;
@@ -2767,14 +2837,19 @@
     }
   }
 
+  function panCamera(dx, dy) {
+    var right = new THREE.Vector3(); camera.getWorldDirection(right); right.cross(camera.up).normalize();
+    var up = camera.up.clone();
+    var scale = radius * 0.0018;
+    target.addScaledVector(right, -dx * scale);
+    target.addScaledVector(up, dy * scale);
+  }
+
   function onPointerMove(e) {
     if (orbiting || panning) {
       var dx = e.clientX - orbitStart.x, dy = e.clientY - orbitStart.y;
       if (panning) {
-        var right = new THREE.Vector3(); camera.getWorldDirection(right); right.cross(camera.up).normalize();
-        var up = camera.up.clone();
-        target.addScaledVector(right, -dx * 0.02);
-        target.addScaledVector(up, dy * 0.02);
+        panCamera(dx, dy);
         orbitStart.x = e.clientX; orbitStart.y = e.clientY;
       } else if (Math.abs(dx) + Math.abs(dy) > 2) {
         theta = startTheta - dx * 0.008;
@@ -3051,8 +3126,7 @@
       if (twoFinger && touchPoints.size >= 2) {
         var mid = touchMidpoint(), dist = touchDistance();
         var dx = mid.x - twoFinger.lastMidX, dy = mid.y - twoFinger.lastMidY;
-        theta -= dx * 0.008;
-        phi -= dy * 0.008;
+        panCamera(dx, dy);
         if (twoFinger.lastDist > 1) {
           radius *= twoFinger.lastDist / Math.max(dist, 1);
           radius = Math.max(2.5, Math.min(90, radius));
