@@ -529,6 +529,55 @@
   .import-hint { font-size: 0.78rem; color: var(--steel); margin: 0 0 10px; line-height: 1.5; }
   .import-hint code { font-family: ui-monospace, "SF Mono", Consolas, monospace; background: var(--paper); padding: 1px 4px; border-radius: 4px; }
 
+  .library-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.97);
+    width: min(380px, calc(100vw - 40px));
+    max-height: min(560px, calc(100vh - 60px));
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 20px 22px;
+    box-shadow: 0 20px 50px var(--shadow);
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease, transform 150ms ease;
+  }
+
+  .library-panel.visible { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+  .library-panel h2 { margin: 0 0 4px; font-size: 1rem; font-weight: 700; color: var(--ink); }
+  .library-hint { font-size: 0.78rem; color: var(--steel); margin: 0 0 14px; }
+
+  .prop-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .prop-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 6px;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .prop-btn:hover { background: var(--paper-line); }
+  .prop-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .prop-btn svg { width: 26px; height: 26px; }
+
   @media (prefers-reduced-motion: reduce) {
     .tool-btn, .hud, .swatch-rail, .swatch, .sun-panel, .help-panel { transition: none; }
   }
@@ -569,6 +618,14 @@
     <button class="tool-btn" data-tool="arc" aria-pressed="false" title="Arc: click center, click start, click end (8)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18a14 14 0 0116-14"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg>
       <span class="btn-label">Arc</span>
+    </button>
+    <button class="tool-btn" data-tool="tape" aria-pressed="false" title="Tape measure: click a corner, drag out, click to drop a guide line other tools snap to (9)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4" stroke-dasharray="2.2 2.2"/><circle cx="4" cy="20" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="currentColor" stroke="none"/></svg>
+      <span class="btn-label">Tape</span>
+    </button>
+    <button class="tool-btn" data-action="clearguides" title="Remove all guide lines">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5" stroke-dasharray="2 2"/><path d="M4 7l3-3 13 13-3 3z"/></svg>
+      <span class="btn-label">Clear guides</span>
     </button>
     <span class="tool-sep"></span>
     <button class="tool-btn" data-action="subtract" title="Subtract: select the shape to keep, shift-click the one to cut away">
@@ -616,6 +673,9 @@
     <button class="icon-toggle" id="layersToggle" aria-pressed="false" title="Layers">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
     </button>
+    <button class="icon-toggle" id="libraryToggle" aria-pressed="false" title="Reference library: people, trees, vehicles">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l3 7-3 2-3-2z"/><path d="M12 12v9M8 21h8"/><circle cx="18" cy="17" r="2.6"/></svg>
+    </button>
     <button class="icon-toggle" id="helpToggle" aria-pressed="false" title="Shortcuts and controls">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.3 9.2a2.7 2.7 0 015.2.9c0 1.8-2.5 1.9-2.5 3.6" stroke-linecap="round"/><circle cx="12" cy="17" r="0.15" fill="currentColor" stroke-width="2.6"/></svg>
     </button>
@@ -652,6 +712,9 @@
     <div class="help-row"><kbd>6</kbd><span>Line (click points, click near start or press Enter to close)</span></div>
     <div class="help-row"><kbd>7</kbd><span>Circle (drag from center)</span></div>
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
+    <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line</span></div>
+    <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
+    <div class="help-row"><kbd>Library panel</kbd><span>Place reference people, trees and vehicles</span></div>
     <div class="help-row"><kbd>Esc</kbd><span>Cancel a Line or Arc in progress</span></div>
     <div class="help-row"><kbd>⌘/Ctrl</kbd><kbd>Z</kbd><span>Undo</span></div>
     <div class="help-row"><kbd>Shift-click</kbd><span>Add to selection</span></div>
@@ -692,6 +755,12 @@
       <button class="tool-btn" id="importCancel">Cancel</button>
       <button class="tool-btn" id="importConfirm">Import</button>
     </div>
+  </div>
+
+  <div class="library-panel" id="libraryPanel">
+    <h2>Reference library</h2>
+    <p class="library-hint">Pick a figure, then click the ground to place it. Pick again to place another.</p>
+    <div class="prop-grid" id="propGrid"></div>
   </div>
 </div>
 
@@ -737,6 +806,9 @@
   var importErrorEl = document.getElementById("importError");
   var importCancelEl = document.getElementById("importCancel");
   var importConfirmEl = document.getElementById("importConfirm");
+  var libraryToggleEl = document.getElementById("libraryToggle");
+  var libraryPanelEl = document.getElementById("libraryPanel");
+  var propGridEl = document.getElementById("propGrid");
 
   var PALETTE = [
     "#f4f0e6", "#e6ddc8", "#ffffff", "#d3c6a8", "#b6a888", "#8a7d64",
@@ -1015,6 +1087,54 @@
   grid.material.opacity = 0.35;
   grid.position.y = 0.001;
   scene.add(grid);
+
+  // ---- Guide lines: dropped by the Tape tool, other drawing tools snap to them ----
+  var guides = [];       // { id, axis: 'x'|'z', pos }
+  var nextGuideId = 1;
+  var guideGroup = new THREE.Group();
+  scene.add(guideGroup);
+  var guideMat = new THREE.LineDashedMaterial({ color: 0x2fa7e0, dashSize: 0.22, gapSize: 0.14, transparent: true, opacity: 0.9, depthTest: false });
+
+  function renderGuideLines() {
+    while (guideGroup.children.length) {
+      var c = guideGroup.children.pop();
+      c.geometry.dispose();
+    }
+    guides.forEach(function (g) {
+      var a = g.axis === "x" ? new THREE.Vector3(g.pos, 0.02, -80) : new THREE.Vector3(-80, 0.02, g.pos);
+      var b = g.axis === "x" ? new THREE.Vector3(g.pos, 0.02, 80) : new THREE.Vector3(80, 0.02, g.pos);
+      var geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+      var line = new THREE.Line(geo, guideMat);
+      line.computeLineDistances();
+      guideGroup.add(line);
+    });
+  }
+
+  var SNAP_DIST = 0.12;
+  function snapCoord(value, axis) {
+    var best = value, bestDist = SNAP_DIST;
+    guides.forEach(function (g) {
+      if (g.axis !== axis) return;
+      var d = Math.abs(g.pos - value);
+      if (d < bestDist) { bestDist = d; best = g.pos; }
+    });
+    return best;
+  }
+
+  function nearestCornerSnap(point) {
+    var best = null, bestDist = 0.25;
+    volumes.forEach(function (v) {
+      if (v.isCompound || !layerOf(v).visible) return;
+      var bb = new THREE.Box3().setFromObject(v.mesh);
+      [bb.min.x, bb.max.x].forEach(function (x) {
+        [bb.min.z, bb.max.z].forEach(function (z) {
+          var d = Math.hypot(point.x - x, point.z - z);
+          if (d < bestDist) { bestDist = d; best = { x: x, z: z }; }
+        });
+      });
+    });
+    return best;
+  }
 
   function applyTheme() {
     var plinthColor = cssVar("--scene-plinth") || "#f4f0e6";
@@ -1354,7 +1474,10 @@
         groups: groups,
         activeLayerId: activeLayerId,
         nextLayerId: nextLayerId,
-        nextGroupId: nextGroupId
+        nextGroupId: nextGroupId,
+        guides: guides,
+        nextGuideId: nextGuideId,
+        props: props.map(function (p) { return { type: p.type, x: p.group.position.x, z: p.group.position.z }; })
       }));
     } catch (err) { /* storage unavailable or full, drawing just won't survive a reload */ }
   }
@@ -1371,6 +1494,12 @@
     nextLayerId = data.nextLayerId || (Math.max.apply(null, layers.map(function (l) { return l.id; })) + 1);
     nextGroupId = data.nextGroupId || (groups.length ? Math.max.apply(null, groups.map(function (g) { return g.id; })) + 1 : 1);
     data.volumes.forEach(restoreVolume);
+    if (Array.isArray(data.guides)) { guides = data.guides; renderGuideLines(); }
+    if (data.nextGuideId) nextGuideId = data.nextGuideId;
+    if (Array.isArray(data.props)) {
+      data.props.forEach(function (p) { placeProp(p.type, { x: p.x, z: p.z }); });
+      selectProp(null);
+    }
     return true;
   }
   function newDrawing() {
@@ -1382,6 +1511,9 @@
     groups = [];
     nextGroupId = 1;
     undoStack = [];
+    guides = [];
+    renderGuideLines();
+    props.slice().forEach(removeProp);
     try { localStorage.removeItem(STORAGE_KEY); } catch (err) {}
     clearSelection();
     renderLayers();
@@ -1551,7 +1683,9 @@
     paint: "Click a shape, then pick a color on the right",
     line: "Click points to sketch a shape, click near the start (or press Enter) to close it",
     circle: "Drag from the center to set the radius",
-    arc: "Click the center, click the start point, then click to set the sweep"
+    arc: "Click the center, click the start point, then click to set the sweep",
+    tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
+    "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove."
   };
 
   function setTool(next) {
@@ -1559,6 +1693,8 @@
     if (next !== "line") cancelLineDrawing();
     if (next !== "circle") cancelCircleDrawing();
     if (next !== "arc") cancelArcDrawing();
+    if (next !== "tape") cancelTapeDrawing();
+    if (next !== "place-prop") armedProp = null;
     tool = next;
     stageEl.className = "tool-" + tool;
     toolButtons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tool === tool ? "true" : "false"); });
@@ -1572,6 +1708,12 @@
   document.querySelector('[data-action="chamfer"]').addEventListener("click", chamferSelected);
   document.querySelector('[data-action="group"]').addEventListener("click", groupSelected);
   document.querySelector('[data-action="lockgroup"]').addEventListener("click", toggleLockSelectedGroup);
+  document.querySelector('[data-action="clearguides"]').addEventListener("click", function () {
+    if (!guides.length) return;
+    guides = [];
+    renderGuideLines();
+    persistState();
+  });
   document.querySelector('[data-action="import"]').addEventListener("click", function () {
     importErrorEl.textContent = "";
     importPanelEl.classList.add("visible");
@@ -1716,8 +1858,10 @@
     else if (e.key === "6") setTool("line");
     else if (e.key === "7") setTool("circle");
     else if (e.key === "8") setTool("arc");
+    else if (e.key === "9") setTool("tape");
     else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
+    else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
   });
 
   setTool("rectangle");
@@ -1739,7 +1883,12 @@
     updatePointer(e);
     raycaster.setFromCamera(pointerNDC, camera);
     var p = new THREE.Vector3();
-    return raycaster.ray.intersectPlane(groundPlane, p) ? p : null;
+    if (!raycaster.ray.intersectPlane(groundPlane, p)) return null;
+    if (guides.length) {
+      p.x = snapCoord(p.x, "x");
+      p.z = snapCoord(p.z, "z");
+    }
+    return p;
   }
 
   function volumeHit(e) {
@@ -1762,6 +1911,25 @@
   var lineDrawing = null;   // { points: [Vector3], line: THREE.Line }
   var circleDrawing = null; // { center, mesh, radius }
   var arcDrawing = null;    // { phase: 'radius'|'sweep', center, radius, startAngle, sweepAccum, lastRawAngle, mesh, radiusLine }
+  var tapeDrawing = null;   // { origin, line }
+
+  function cancelTapeDrawing() {
+    if (!tapeDrawing) return;
+    scene.remove(tapeDrawing.line);
+    tapeDrawing.line.geometry.dispose();
+    tapeDrawing = null;
+    hideDims();
+  }
+
+  function finalizeTape(endPoint) {
+    var dx = endPoint.x - tapeDrawing.origin.x, dz = endPoint.z - tapeDrawing.origin.z;
+    if (Math.abs(dx) < 0.05 && Math.abs(dz) < 0.05) { cancelTapeDrawing(); return; }
+    if (Math.abs(dx) > Math.abs(dz)) guides.push({ id: nextGuideId++, axis: "x", pos: endPoint.x });
+    else guides.push({ id: nextGuideId++, axis: "z", pos: endPoint.z });
+    cancelTapeDrawing();
+    renderGuideLines();
+    persistState();
+  }
 
   var unitCircleGeo = new THREE.CircleGeometry(1, 48);
   unitCircleGeo.rotateX(-Math.PI / 2);
@@ -1948,6 +2116,259 @@
     geo.computeBoundingSphere();
     return geo;
   }
+
+  // ---- Reference library: simple abstract props (people, trees, vehicles) built from
+  // primitive geometry. They live outside the volumes/CSG system entirely -- decorative
+  // scale references, not editable massing -- so push/pull/paint/subtract don't apply.
+  var PROP_COLORS = {
+    skin: 0xd8b898, hair: 0x4a3728, hat: 0xdcc48a, shirt: 0x8a99a8, pants: 0x4a4f5c,
+    dress: 0xb99bb0, treeTrunk: 0x6b4e34, pineGreen: 0x4f7a4a, cypressGreen: 0x3c6b45,
+    carBody: 0xb9c2c9, wheel: 0x2b2b2b, dogFur: 0xa9835f
+  };
+
+  function propMat(hex) { return new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85, metalness: 0.02 }); }
+
+  function strutBetween(p1, p2, radius, mat) {
+    var dir = new THREE.Vector3().subVectors(p2, p1);
+    var len = Math.max(dir.length(), 0.001);
+    var mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 8), mat);
+    mesh.position.copy(p1).addScaledVector(dir, 0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    return mesh;
+  }
+
+  function finishProp(g) {
+    g.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    return g;
+  }
+
+  function buildPersonBase(height, bodyRadius, shirtColor, pantsColor) {
+    var g = new THREE.Group();
+    var legHeight = height * 0.42, torsoHeight = height * 0.36, headRadius = height * 0.065;
+    var legs = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius * 0.85, bodyRadius * 0.85, legHeight, 12), propMat(pantsColor));
+    legs.position.y = legHeight / 2;
+    g.add(legs);
+    var torso = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius, bodyRadius * 0.9, torsoHeight, 12), propMat(shirtColor));
+    torso.position.y = legHeight + torsoHeight / 2;
+    g.add(torso);
+    var head = new THREE.Mesh(new THREE.SphereGeometry(headRadius, 16, 12), propMat(PROP_COLORS.skin));
+    head.position.y = legHeight + torsoHeight + headRadius;
+    g.add(head);
+    g.userData.headCenter = new THREE.Vector3(0, legHeight + torsoHeight + headRadius, 0);
+    g.userData.headRadius = headRadius;
+    return g;
+  }
+
+  function buildMan() {
+    var g = buildPersonBase(1.78, 0.16, PROP_COLORS.shirt, PROP_COLORS.pants);
+    var hr = g.userData.headRadius, hc = g.userData.headCenter, hatR = hr * 2.1;
+    var brim = new THREE.Mesh(new THREE.CylinderGeometry(hatR, hatR, 0.02, 20), propMat(PROP_COLORS.hat));
+    brim.position.set(hc.x, hc.y + hr * 0.7, hc.z);
+    g.add(brim);
+    var top = new THREE.Mesh(new THREE.CylinderGeometry(hatR * 0.55, hatR * 0.6, hr * 1.1, 16), propMat(PROP_COLORS.hat));
+    top.position.set(brim.position.x, brim.position.y + hr * 0.6, brim.position.z);
+    g.add(top);
+    return finishProp(g);
+  }
+
+  function buildWoman() {
+    var g = buildPersonBase(1.65, 0.14, PROP_COLORS.dress, PROP_COLORS.dress);
+    var hr = g.userData.headRadius, hc = g.userData.headCenter;
+    var bun = new THREE.Mesh(new THREE.SphereGeometry(hr * 0.45, 12, 10), propMat(PROP_COLORS.hair));
+    bun.position.set(hc.x, hc.y + hr * 0.75, hc.z - hr * 0.55);
+    g.add(bun);
+    return finishProp(g);
+  }
+
+  function buildChild() {
+    return finishProp(buildPersonBase(1.05, 0.10, 0x8ec2ea, 0xe0c86a));
+  }
+
+  function buildDog() {
+    var g = new THREE.Group(), mat = propMat(PROP_COLORS.dogFur);
+    var body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), mat);
+    body.scale.set(1.7, 0.9, 1.0);
+    body.position.set(0, 0.26, 0);
+    g.add(body);
+    var head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), mat);
+    head.position.set(0.26, 0.32, 0);
+    g.add(head);
+    var legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.22, 8);
+    [[-0.15, -0.09], [-0.15, 0.09], [0.13, -0.09], [0.13, 0.09]].forEach(function (p) {
+      var leg = new THREE.Mesh(legGeo, mat);
+      leg.position.set(p[0], 0.11, p[1]);
+      g.add(leg);
+    });
+    g.add(strutBetween(new THREE.Vector3(-0.16, 0.34, 0), new THREE.Vector3(-0.32, 0.44, 0), 0.02, mat));
+    return finishProp(g);
+  }
+
+  function buildPineTree() {
+    var g = new THREE.Group();
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 1.1, 10), propMat(PROP_COLORS.treeTrunk));
+    trunk.position.y = 0.55;
+    g.add(trunk);
+    [{ r: 0.75, h: 1.0, y: 1.35 }, { r: 0.6, h: 0.85, y: 1.95 }, { r: 0.42, h: 0.7, y: 2.5 }].forEach(function (t) {
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(t.r, t.h, 14), propMat(PROP_COLORS.pineGreen));
+      cone.position.y = t.y;
+      g.add(cone);
+    });
+    return finishProp(g);
+  }
+
+  function buildCypress() {
+    var g = new THREE.Group();
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.5, 8), propMat(PROP_COLORS.treeTrunk));
+    trunk.position.y = 0.25;
+    g.add(trunk);
+    var canopy = new THREE.Mesh(new THREE.ConeGeometry(0.45, 3.4, 14), propMat(PROP_COLORS.cypressGreen));
+    canopy.position.y = 0.5 + 1.7;
+    g.add(canopy);
+    return finishProp(g);
+  }
+
+  function buildCar() {
+    var g = new THREE.Group();
+    var temp = new THREE.Mesh(boxGeo);
+    temp.scale.set(4.0, 1.3, 1.8);
+    temp.position.set(0, 0.28, 0);
+    temp.updateMatrixWorld(true);
+    var body = new THREE.Mesh(chamferGeometry(temp, 0.45), propMat(PROP_COLORS.carBody));
+    g.add(body);
+    var wheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 16);
+    var wheelMat = propMat(PROP_COLORS.wheel);
+    [[-1.3, -0.85], [-1.3, 0.85], [1.3, -0.85], [1.3, 0.85]].forEach(function (p) {
+      var wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.rotation.x = Math.PI / 2;
+      wheel.position.set(p[0], 0.32, p[1]);
+      g.add(wheel);
+    });
+    return finishProp(g);
+  }
+
+  function buildBicycle() {
+    var g = new THREE.Group();
+    var frameMat = propMat(0x2b2b2b);
+    var wheelR = 0.33;
+    var wheelGeo = new THREE.TorusGeometry(wheelR, 0.015, 8, 24);
+    var backHub = new THREE.Vector3(-0.5, wheelR, 0), frontHub = new THREE.Vector3(0.5, wheelR, 0);
+    [backHub, frontHub].forEach(function (hub) {
+      var wheel = new THREE.Mesh(wheelGeo, frameMat);
+      wheel.position.copy(hub);
+      wheel.rotation.y = Math.PI / 2;
+      g.add(wheel);
+    });
+    var seat = new THREE.Vector3(-0.22, wheelR + 0.55, 0);
+    var pedals = new THREE.Vector3(-0.05, wheelR + 0.15, 0);
+    var handlebar = new THREE.Vector3(0.42, wheelR + 0.6, 0);
+    [[backHub, seat], [seat, pedals], [pedals, backHub], [pedals, frontHub], [pedals, handlebar], [handlebar, frontHub]]
+      .forEach(function (pair) { g.add(strutBetween(pair[0], pair[1], 0.014, frameMat)); });
+    var seatBlob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), frameMat);
+    seatBlob.position.copy(seat);
+    g.add(seatBlob);
+    return finishProp(g);
+  }
+
+  var PROP_BUILDERS = {
+    man: buildMan, woman: buildWoman, child: buildChild, dog: buildDog,
+    pine: buildPineTree, cypress: buildCypress, car: buildCar, bicycle: buildBicycle
+  };
+  var PROP_LABELS = {
+    man: "Man (hat)", woman: "Woman (bun)", child: "Child", dog: "Dog",
+    pine: "Pine tree", cypress: "Cypress", car: "Car", bicycle: "Bicycle"
+  };
+  var PROP_ICONS = {
+    man: '<circle cx="12" cy="7" r="3"/><path d="M12 10v7M8 13h8M9 21l3-4 3 4"/>',
+    woman: '<circle cx="12" cy="7" r="3"/><path d="M9 21l3-10 3 10M9 13h6"/>',
+    child: '<circle cx="12" cy="8" r="2.4"/><path d="M12 10.4v5M9.5 21l2.5-5.6 2.5 5.6"/>',
+    dog: '<ellipse cx="11" cy="14" rx="6" ry="3"/><circle cx="18" cy="12" r="2.6"/><path d="M6 17v3M10 17v3M14 16v3"/>',
+    pine: '<path d="M12 2l4 6h-2l3.5 5H15l3.5 6H5.5L9 13H7L10.5 8H8.5z"/><path d="M12 21v-3" stroke-dasharray="0"/>',
+    cypress: '<path d="M12 2c3 4 3 14 0 19-3-5-3-15 0-19z"/>',
+    car: '<rect x="3" y="10" width="18" height="6" rx="2.5"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/>',
+    bicycle: '<circle cx="6" cy="17" r="3.4"/><circle cx="18" cy="17" r="3.4"/><path d="M6 17l5-9h5l2 5M11 8H8.5M9 17h9"/>'
+  };
+
+  var props = [];
+  var nextPropId = 1;
+  var armedProp = null;
+  var selectedPropEntry = null;
+  var propOutline = new THREE.BoxHelper(new THREE.Object3D(), 0x1f9e97);
+  propOutline.material.transparent = true;
+  propOutline.material.opacity = 0;
+  propOutline.material.depthTest = false;
+  scene.add(propOutline);
+
+  function selectProp(entry) {
+    selectedPropEntry = entry;
+    if (entry) {
+      propOutline.setFromObject(entry.group);
+      propOutline.material.color.set(new THREE.Color(cssVar("--accent") || "#1f9e97"));
+      propOutline.material.opacity = 0.9;
+    } else {
+      propOutline.material.opacity = 0;
+    }
+  }
+
+  function placeProp(type, point) {
+    var builder = PROP_BUILDERS[type];
+    if (!builder) return null;
+    var group = builder();
+    group.position.set(point.x, 0, point.z);
+    scene.add(group);
+    var entry = { id: nextPropId++, type: type, group: group };
+    props.push(entry);
+    selectProp(entry);
+    persistState();
+    return entry;
+  }
+
+  function removeProp(entry) {
+    scene.remove(entry.group);
+    entry.group.traverse(function (o) { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+    var i = props.indexOf(entry);
+    if (i >= 0) props.splice(i, 1);
+    if (selectedPropEntry === entry) selectProp(null);
+    persistState();
+  }
+
+  function propHit(e) {
+    updatePointer(e);
+    raycaster.setFromCamera(pointerNDC, camera);
+    var meshes = [];
+    props.forEach(function (p) { p.group.traverse(function (o) { if (o.isMesh) meshes.push(o); }); });
+    var hits = raycaster.intersectObjects(meshes, false);
+    if (!hits.length) return null;
+    var hitMesh = hits[0].object;
+    return props.filter(function (p) {
+      var found = false;
+      p.group.traverse(function (o) { if (o === hitMesh) found = true; });
+      return found;
+    })[0] || null;
+  }
+
+  propGridEl.innerHTML = "";
+  Object.keys(PROP_BUILDERS).forEach(function (type) {
+    var btn = document.createElement("button");
+    btn.className = "prop-btn";
+    btn.type = "button";
+    btn.setAttribute("aria-pressed", "false");
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + PROP_ICONS[type] + '</svg><span>' + PROP_LABELS[type] + '</span>';
+    btn.addEventListener("click", function () {
+      armedProp = type;
+      setTool("place-prop");
+      Array.prototype.forEach.call(propGridEl.children, function (b) { b.setAttribute("aria-pressed", "false"); });
+      btn.setAttribute("aria-pressed", "true");
+      libraryPanelEl.classList.remove("visible");
+      libraryToggleEl.setAttribute("aria-pressed", "false");
+    });
+    propGridEl.appendChild(btn);
+  });
+
+  libraryToggleEl.addEventListener("click", function () {
+    var visible = !libraryPanelEl.classList.contains("visible");
+    libraryPanelEl.classList.toggle("visible", visible);
+    libraryToggleEl.setAttribute("aria-pressed", String(visible));
+  });
 
   // ---- Draw-on-face: sketch a rectangle directly on any existing axis-aligned
   // face, then push it out (union, a bump) or in (subtract, a cut/notch/hole) ----
@@ -2160,6 +2581,12 @@
       var hit3 = volumeHit(e);
       var v3 = hit3 ? volumeOf(hit3.object) : null;
 
+      if (tool === "select" && !v3) {
+        var propEntry = propHit(e);
+        if (propEntry) { selectProp(propEntry); return; }
+        selectProp(null);
+      }
+
       if (e.shiftKey) {
         if (v3) toggleInSelection(v3);
         return;
@@ -2238,6 +2665,22 @@
       } else if (arcDrawing.phase === "sweep") {
         finalizeArcDrawing();
       }
+    } else if (tool === "tape") {
+      var tp = groundHit(e);
+      if (!tp) return;
+      var corner = nearestCornerSnap(tp);
+      if (corner) { tp.x = corner.x; tp.z = corner.z; }
+      if (!tapeDrawing) {
+        var tapeLine = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
+        scene.add(tapeLine);
+        tapeDrawing = { origin: tp.clone(), line: tapeLine };
+      } else {
+        finalizeTape(tp);
+      }
+    } else if (tool === "place-prop" && armedProp) {
+      var pp = groundHit(e);
+      if (!pp) return;
+      placeProp(armedProp, pp);
     }
   }
 
@@ -2291,6 +2734,17 @@
         arcDrawing.sweepAccum += delta;
         arcDrawing.lastRawAngle = rawAngle;
         updateArcPreview();
+      }
+      return;
+    }
+
+    if (tapeDrawing) {
+      var tmp = groundHit(e);
+      if (tmp) {
+        setLinePositions(tapeDrawing.line, [tapeDrawing.origin, tmp], 0.04);
+        var tdx = tmp.x - tapeDrawing.origin.x, tdz = tmp.z - tapeDrawing.origin.z;
+        var dist = Math.abs(Math.abs(tdx) > Math.abs(tdz) ? tdx : tdz);
+        showDims(dist, dist, 0);
       }
       return;
     }
