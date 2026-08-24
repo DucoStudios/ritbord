@@ -387,6 +387,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><rect x="9" y="9" width="12" height="12" rx="1" stroke-dasharray="2.5 2.5"/></svg>
       Subtrahera
     </button>
+    <button class="tool-btn" data-action="chamfer" title="Fasa kanterna på markerad form">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5z"/></svg>
+      Fasa
+    </button>
     <span class="tool-sep"></span>
     <button class="tool-btn" data-action="undo" title="Ångra (Cmd/Ctrl+Z)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7L3 11l4 4"/><path d="M3 11h11a6 6 0 010 12h-2"/></svg>
@@ -579,6 +583,18 @@
       b.invert();
       b.clipTo(a);
       b.invert();
+      a.build(b.allPolygons());
+      a.invert();
+      return new CSGObj(a.allPolygons());
+    };
+    CSGObj.prototype.intersect = function (other) {
+      var a = new Node(this.clone().polygons);
+      var b = new Node(other.clone().polygons);
+      a.invert();
+      b.clipTo(a);
+      b.invert();
+      a.clipTo(b);
+      b.clipTo(a);
       a.build(b.allPolygons());
       a.invert();
       return new CSGObj(a.allPolygons());
@@ -997,6 +1013,53 @@
     selectSingle(vol);
   }
 
+  // ---- Chamfer (verified via corner box ∩ diamond-prism intersection, one per axis) ----
+  function chamferGeometry(mesh, bevel) {
+    var hw = mesh.scale.x / 2, hh = mesh.scale.y / 2, hd = mesh.scale.z / 2;
+    var maxBevel = Math.min(hw, hh, hd) * 0.9;
+    bevel = Math.max(0.02, Math.min(bevel, maxBevel));
+    var cx = mesh.position.x, cy = mesh.position.y + hh, cz = mesh.position.z;
+
+    var result = CSG.fromPolygons(meshToCSGPolygons(mesh));
+    var axes = [
+      { rot: "x", H: (hh + hd - bevel) / Math.SQRT2, len: 2 * hw + 10 },
+      { rot: "y", H: (hw + hd - bevel) / Math.SQRT2, len: 2 * hh + 10 },
+      { rot: "z", H: (hw + hh - bevel) / Math.SQRT2, len: 2 * hd + 10 }
+    ];
+    axes.forEach(function (ax) {
+      var sx = ax.rot === "x" ? ax.len : 2 * ax.H;
+      var sy = ax.rot === "y" ? ax.len : 2 * ax.H;
+      var sz = ax.rot === "z" ? ax.len : 2 * ax.H;
+      var cutterMesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz));
+      cutterMesh.position.set(cx, cy, cz);
+      if (ax.rot === "x") cutterMesh.rotation.x = Math.PI / 4;
+      if (ax.rot === "y") cutterMesh.rotation.y = Math.PI / 4;
+      if (ax.rot === "z") cutterMesh.rotation.z = Math.PI / 4;
+      cutterMesh.updateMatrixWorld(true);
+      result = result.intersect(CSG.fromPolygons(meshToCSGPolygons(cutterMesh)));
+    });
+    var geo = csgPolygonsToGeometry(result.toPolygons());
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
+  function chamferSelected() {
+    if (selection.length !== 1 || selection[0].isCompound) {
+      setHint("Markera en enkel lådform (inte redan subtraherad/fasad) för att fasa");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
+      return;
+    }
+    var v = selection[0];
+    var half = Math.min(v.mesh.scale.x, v.mesh.scale.y, v.mesh.scale.z) / 2;
+    var bevel = half * 0.18;
+    snapshot();
+    var geo = chamferGeometry(v.mesh, bevel);
+    var color = v.color;
+    removeVolume(v);
+    var vol = addCompoundVolume(geo, color);
+    selectSingle(vol);
+  }
+
   // ---- HUD ----
   function showDims(w, d, h) {
     dimWEl.textContent = w.toFixed(1);
@@ -1034,6 +1097,7 @@
     b.addEventListener("click", function () { setTool(b.dataset.tool); });
   });
   document.querySelector('[data-action="subtract"]').addEventListener("click", subtractSelected);
+  document.querySelector('[data-action="chamfer"]').addEventListener("click", chamferSelected);
   document.querySelector('[data-action="undo"]').addEventListener("click", undo);
   document.querySelector('[data-action="clear"]').addEventListener("click", function () {
     if (volumes.length && window.confirm("Rensa alla former?")) { snapshot(); clearAll(); }
