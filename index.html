@@ -101,7 +101,9 @@
   }
 
   #stage.tool-rectangle canvas,
-  #stage.tool-pushpull canvas, #stage.tool-scale canvas { cursor: crosshair; }
+  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas { cursor: crosshair; }
+  #stage.tool-pan canvas { cursor: grab; }
+  #stage.tool-pan.dragging canvas { cursor: grabbing; }
   #stage.tool-paint canvas { cursor: pointer; }
   #stage.dragging canvas { cursor: grabbing; }
 
@@ -230,6 +232,38 @@
   }
 
   .hud.visible { opacity: 1; }
+
+  .scale-bar {
+    position: fixed;
+    bottom: 22px;
+    left: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    z-index: 10;
+    pointer-events: none;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .scale-bar .bar {
+    height: 6px;
+    border: 1.5px solid var(--ink);
+    border-top: none;
+    background:
+      linear-gradient(to right, var(--ink) 0 50%, transparent 50% 100%) top / 100% 3px no-repeat,
+      transparent;
+    min-width: 24px;
+  }
+  .scale-bar .label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--panel);
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+  }
 
   .hud .dim-label {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -603,6 +637,14 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6M4 4v6M4 4l6.5 6.5"/><path d="M20 20h-6M20 20v-6M20 20l-6.5-6.5"/><rect x="9" y="9" width="6" height="6" rx="0.5"/></svg>
       <span class="btn-label">Scale</span>
     </button>
+    <button class="tool-btn" data-tool="rotate" aria-pressed="false" title="Rotate: shapes turn in 90° steps, figures/trees/cars turn freely (R)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 1 2.6 5.9"/><path d="M4 18v-5h5"/></svg>
+      <span class="btn-label">Rotate</span>
+    </button>
+    <button class="tool-btn" data-tool="pan" aria-pressed="false" title="Pan: drag to move the view (H) (also: shift-drag or middle-button drag with any tool)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7M12 3l-2 2M12 3l2 2M12 21v-7M12 21l-2-2M12 21l2-2M3 12h7M3 12l2-2M3 12l2 2M21 12h-7M21 12l-2-2M21 12l-2 2"/></svg>
+      <span class="btn-label">Pan</span>
+    </button>
     <button class="tool-btn" data-tool="move" aria-pressed="false" title="Move (4)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M6 6L3 12M3 12l3 6M18 6l3 6M21 12l-3 6"/></svg>
       <span class="btn-label">Move</span>
@@ -694,6 +736,11 @@
     <span><span class="dim-label">H</span><span id="dimH">0.0</span> m</span>
   </div>
 
+  <div class="scale-bar" id="scaleBar">
+    <div class="bar" id="scaleBarLine"></div>
+    <span class="label" id="scaleBarLabel">1 m</span>
+  </div>
+
   <div class="swatch-rail" id="swatchRail"></div>
 
   <div class="sun-panel" id="sunPanel">
@@ -713,8 +760,10 @@
     <div class="help-row"><kbd>2</kbd><span>Rita</span></div>
     <div class="help-row"><kbd>3</kbd><span>Push/Pull</span></div>
     <div class="help-row"><kbd>0</kbd><span>Scale (stretch the whole shape, not just one face)</span></div>
+    <div class="help-row"><kbd>R</kbd><span>Rotate (shapes snap to 90°, figures/trees/cars turn freely)</span></div>
+    <div class="help-row"><kbd>H</kbd><span>Pan (drag anywhere to move the view)</span></div>
     <div class="help-row"><kbd>4</kbd><span>Move</span></div>
-    <div class="help-row"><kbd>5</kbd><span>Paint</span></div>
+    <div class="help-row"><kbd>5</kbd><span>Paint (also works from Select: click a face, pick a color)</span></div>
     <div class="help-row"><kbd>6</kbd><span>Line (click points, click near start or press Enter to close)</span></div>
     <div class="help-row"><kbd>7</kbd><span>Circle (drag from center)</span></div>
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
@@ -791,6 +840,9 @@
   var dimDEl = document.getElementById("dimD");
   var dimHEl = document.getElementById("dimH");
   var swatchRailEl = document.getElementById("swatchRail");
+  var scaleBarEl = document.getElementById("scaleBar");
+  var scaleBarLineEl = document.getElementById("scaleBarLine");
+  var scaleBarLabelEl = document.getElementById("scaleBarLabel");
   var gridToggleEl = document.getElementById("gridToggle");
   var sunToggleEl = document.getElementById("sunToggle");
   var sunPanelEl = document.getElementById("sunPanel");
@@ -1270,6 +1322,43 @@
   // ---- Orbit / pan / zoom camera rig ----
   var target = new THREE.Vector3(0, 0.8, 0);
   var radius = 16, theta = Math.PI * 0.28, phi = Math.PI * 0.32;
+
+  // ---- Scale bar: a physical architect's-model scale reference, always
+  // showing what a real meter looks like at the current zoom, measured along
+  // the camera's own screen-horizontal direction (not a fixed world axis) so
+  // it stays accurate no matter how the view is orbited ----
+  var SCALE_CANDIDATES = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+  function niceScaleLength(pixelsPerMeter) {
+    var maxPx = 150;
+    var chosen = SCALE_CANDIDATES[0];
+    for (var i = 0; i < SCALE_CANDIDATES.length; i++) {
+      if (SCALE_CANDIDATES[i] * pixelsPerMeter <= maxPx) chosen = SCALE_CANDIDATES[i];
+      else break;
+    }
+    return chosen;
+  }
+  function formatMeters(m) {
+    if (m < 1) return Math.round(m * 100) + " cm";
+    return (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + " m";
+  }
+  function updateScaleBar() {
+    if (!scaleBarLineEl) return;
+    var w = window.innerWidth, h = window.innerHeight;
+    if (!w || !h) return;
+    var right = new THREE.Vector3();
+    camera.getWorldDirection(right);
+    right.cross(camera.up).normalize();
+    var pa = target.clone().project(camera);
+    var pb = target.clone().addScaledVector(right, 1).project(camera);
+    var pxA = (pa.x * 0.5 + 0.5) * w, pyA = (1 - (pa.y * 0.5 + 0.5)) * h;
+    var pxB = (pb.x * 0.5 + 0.5) * w, pyB = (1 - (pb.y * 0.5 + 0.5)) * h;
+    var pixelsPerMeter = Math.hypot(pxB - pxA, pyB - pyA);
+    if (!isFinite(pixelsPerMeter) || pixelsPerMeter <= 0) return;
+    var lengthM = niceScaleLength(pixelsPerMeter);
+    scaleBarLineEl.style.width = Math.max(2, lengthM * pixelsPerMeter) + "px";
+    scaleBarLabelEl.textContent = formatMeters(lengthM);
+  }
+
   function updateCamera() {
     var sp = phi < 0.06 ? 0.06 : (phi > Math.PI - 0.06 ? Math.PI - 0.06 : phi);
     camera.position.set(
@@ -1278,6 +1367,7 @@
       target.z + radius * Math.sin(sp) * Math.cos(theta)
     );
     camera.lookAt(target);
+    updateScaleBar();
   }
   updateCamera();
   updateSun();
@@ -1390,11 +1480,33 @@
     faceHighlightMesh.visible = true;
     selectedFace = { vol: vol, axis: fa.axis, sign: fa.sign, faceOffset: faceOffset, w: w, h: h };
     showDims(w, h, 0);
+    updateSwatchRailVisibility();
     return true;
   }
   function hideFaceHighlight() {
     faceHighlightMesh.visible = false;
     selectedFace = null;
+    updateSwatchRailVisibility();
+  }
+  function updateSwatchRailVisibility() {
+    swatchRailEl.classList.toggle("visible", tool === "paint" || (tool === "select" && !!selectedFace));
+  }
+  function paintSelectedFace(colorHex) {
+    if (!selectedFace) return;
+    var vol = selectedFace.vol;
+    if (isLocked(vol)) {
+      setHint("The shape is locked (group or layer)");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+      return;
+    }
+    var normal = new THREE.Vector3(
+      selectedFace.axis === "x" ? selectedFace.sign : 0,
+      selectedFace.axis === "y" ? selectedFace.sign : 0,
+      selectedFace.axis === "z" ? selectedFace.sign : 0
+    );
+    snapshot();
+    paintFace(vol, { face: { normal: normal } }, colorHex);
+    persistState();
   }
   function toggleInSelection(vol) {
     var i = selection.indexOf(vol);
@@ -1534,7 +1646,7 @@
         nextGroupId: nextGroupId,
         guides: guides,
         nextGuideId: nextGuideId,
-        props: props.map(function (p) { return { type: p.type, x: p.group.position.x, y: p.group.position.y, z: p.group.position.z }; })
+        props: props.map(function (p) { return { type: p.type, x: p.group.position.x, y: p.group.position.y, z: p.group.position.z, rotationY: p.group.rotation.y }; })
       }));
     } catch (err) { /* storage unavailable or full, drawing just won't survive a reload */ }
   }
@@ -1562,7 +1674,7 @@
       if (data.nextGuideId) nextGuideId = data.nextGuideId;
       if (Array.isArray(data.props)) {
         data.props.forEach(function (p) {
-          try { placeProp(p.type, { x: p.x, y: p.y, z: p.z }); } catch (err) { console.warn("Skipped a corrupt saved prop", err); }
+          try { placeProp(p.type, { x: p.x, y: p.y, z: p.z }, p.rotationY); } catch (err) { console.warn("Skipped a corrupt saved prop", err); }
         });
         selectProp(null);
       }
@@ -1751,6 +1863,8 @@
     rectangle: "Drag on the floor for a new shape, or drag directly on a surface to sketch on it",
     pushpull: "Drag a surface outward to extend, inward to cut back or cut in",
     scale: "Drag a surface to stretch or shrink the whole shape along that axis, anchored on the opposite side",
+    rotate: "Drag a shape sideways to turn it (snaps to 90°), drag a figure/tree/car to face it any direction",
+    pan: "Drag anywhere to move the view",
     move: "Drag a shape or a placed figure to move it (figures can stand on any floor), shift-click selects multiple shapes",
     paint: "Click a shape, then pick a color on the right",
     line: "Click points to sketch a shape, click near the start (or press Enter) to close it",
@@ -1771,7 +1885,7 @@
     tool = next;
     stageEl.className = "tool-" + tool;
     toolButtons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tool === tool ? "true" : "false"); });
-    swatchRailEl.classList.toggle("visible", tool === "paint");
+    updateSwatchRailVisibility();
     setHint(HINTS[tool] || "");
   }
   toolButtons.forEach(function (b) {
@@ -1913,6 +2027,7 @@
       Array.prototype.forEach.call(swatchRailEl.children, function (c) { c.setAttribute("aria-pressed", "false"); });
       b.setAttribute("aria-pressed", "true");
       activeSwatch = hex;
+      if (tool === "select" && selectedFace) paintSelectedFace(hex);
     });
     swatchRailEl.appendChild(b);
   });
@@ -1933,6 +2048,8 @@
     else if (e.key === "8") setTool("arc");
     else if (e.key === "9") setTool("tape");
     else if (e.key === "0") setTool("scale");
+    else if (e.key.toLowerCase() === "r") setTool("rotate");
+    else if (e.key.toLowerCase() === "h") setTool("pan");
     else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
@@ -1979,6 +2096,8 @@
   var drawing = null;      // { startX, startZ, vol }
   var pulling = null;      // { vol, plane, axis, sign, fixedPos, facePos0 }
   var scaling = null;      // { vol, plane, axis, sign, normal, hitPoint, sizeBefore, scaleBefore, posBefore, anchorWorld, anchorSide }
+  var rotating = null;     // volume: { kind:"volume", vol, startX, appliedSteps } / prop: { kind:"prop", entry, startX, startRotationY }
+  var ROTATE_STEP_PX = 70; // pixels of horizontal drag per 90-degree detent for volumes
   var moving = null;       // { startPoint, items: [{vol, x0, z0}] }
   var movingProp = null;   // { entry, group }
   var faceDrawing = null;  // { targetVol, axis, sign, faceOffset, plane, startU, startV, mesh }
@@ -2093,6 +2212,7 @@
     if (drawing) { removeVolume(drawing.vol); drawing = null; hideOutline(); }
     if (pulling) { pulling = null; hideOutline(); }
     if (scaling) { if (scaling.vol.isCompound) bakeMeshTransform(scaling.vol.mesh); scaling = null; hideOutline(); }
+    if (rotating) { rotating = null; }
     if (faceDrawing) { scene.remove(faceDrawing.mesh); faceDrawing.mesh.material.dispose(); faceDrawing = null; }
     if (sketchPull) { sketchPull = null; }
     if (moving) { moving = null; }
@@ -2239,6 +2359,30 @@
     mesh.scale.set(1, 1, 1);
     mesh.quaternion.identity();
     mesh.updateMatrixWorld(true);
+  }
+
+  // ---- Rotate: volumes only turn in 90-degree steps, on purpose. Every other
+  // tool (push/pull, paint, scale, single-face select) depends on volume
+  // meshes staying axis-aligned with identity rotation; a 90-degree turn
+  // around the vertical axis is the one rotation that preserves that exactly
+  // (X/Z faces just swap places, Y faces stay Y faces), so nothing else in the
+  // app has to know a rotation ever happened. Props (people/trees/vehicles)
+  // aren't subject to that constraint and get free rotation instead.
+  function rotateVolume90(vol, dir) {
+    if (vol.isCompound) {
+      var bbox = new THREE.Box3().setFromObject(vol.mesh);
+      var pivot = new THREE.Vector3((bbox.min.x + bbox.max.x) / 2, 0, (bbox.min.z + bbox.max.z) / 2);
+      var q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dir * Math.PI / 2);
+      var rel = vol.mesh.position.clone().sub(pivot).applyQuaternion(q);
+      vol.mesh.position.copy(pivot).add(rel);
+      vol.mesh.quaternion.premultiply(q);
+      vol.mesh.updateMatrixWorld(true);
+      bakeMeshTransform(vol.mesh);
+    } else {
+      var w = vol.mesh.scale.x, d = vol.mesh.scale.z;
+      vol.mesh.scale.x = d;
+      vol.mesh.scale.z = w;
+    }
   }
 
   // ---- Line / Circle / Arc: extruded custom shapes, built via THREE.Shape.
@@ -2520,11 +2664,12 @@
     }
   }
 
-  function placeProp(type, point) {
+  function placeProp(type, point, rotationY) {
     var builder = PROP_BUILDERS[type];
     if (!builder) return null;
     var group = builder();
     group.position.set(point.x, point.y || 0, point.z);
+    group.rotation.y = rotationY || 0;
     scene.add(group);
     var entry = { id: nextPropId++, type: type, group: group };
     props.push(entry);
@@ -2690,6 +2835,14 @@
     }
     if (e.button !== 0) return;
 
+    if (tool === "pan") {
+      panning = true;
+      orbitStart.x = e.clientX; orbitStart.y = e.clientY;
+      stageEl.classList.add("dragging");
+      renderer.domElement.setPointerCapture(e.pointerId);
+      return;
+    }
+
     if (tool === "rectangle") {
       var faceHit = volumeHit(e);
       var fa = faceHit ? faceAxisFromNormal(faceHit.face.normal) : null;
@@ -2805,6 +2958,27 @@
         beginScale(volSc, faceSc, hitSc.point);
         selectSingle(volSc);
         snapshot();
+        renderer.domElement.setPointerCapture(e.pointerId);
+      }
+    } else if (tool === "rotate") {
+      var hitRo = volumeHit(e);
+      var volRo = hitRo ? volumeOf(hitRo.object) : null;
+      if (volRo) {
+        if (isLocked(volRo)) {
+          setHint("The shape is locked (group or layer)");
+          setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+          return;
+        }
+        snapshot();
+        selectSingle(volRo);
+        rotating = { kind: "volume", vol: volRo, startX: e.clientX, appliedSteps: 0 };
+        renderer.domElement.setPointerCapture(e.pointerId);
+        return;
+      }
+      var propRo = propHit(e);
+      if (propRo) {
+        selectProp(propRo);
+        rotating = { kind: "prop", entry: propRo, startX: e.clientX, startRotationY: propRo.group.rotation.y };
         renderer.domElement.setPointerCapture(e.pointerId);
       }
     } else if (tool === "paint") {
@@ -3051,6 +3225,24 @@
       return;
     }
 
+    if (rotating) {
+      var dxR = e.clientX - rotating.startX;
+      if (rotating.kind === "prop") {
+        rotating.entry.group.rotation.y = rotating.startRotationY + dxR * 0.012;
+        propOutline.setFromObject(rotating.entry.group);
+      } else {
+        var targetSteps = Math.round(dxR / ROTATE_STEP_PX);
+        if (targetSteps !== rotating.appliedSteps) {
+          var stepDir = targetSteps > rotating.appliedSteps ? 1 : -1;
+          var stepCount = Math.abs(targetSteps - rotating.appliedSteps);
+          for (var rs = 0; rs < stepCount; rs++) rotateVolume90(rotating.vol, stepDir);
+          rotating.appliedSteps = targetSteps;
+          refreshSelectionOutlines();
+        }
+      }
+      return;
+    }
+
     if (faceDrawing) {
       updatePointer(e);
       raycaster.setFromCamera(pointerNDC, camera);
@@ -3169,6 +3361,7 @@
       scaling = null;
       hideOutline();
     }
+    if (rotating) { rotating = null; }
 
     if (faceDrawing) {
       var uSize = faceDrawing.uMax - faceDrawing.uMin, vSize = faceDrawing.vMax - faceDrawing.vMin;
@@ -3291,6 +3484,7 @@
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    updateScaleBar();
   });
 
   var mq = window.matchMedia("(prefers-color-scheme: dark)");
