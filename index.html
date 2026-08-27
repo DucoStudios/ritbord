@@ -879,10 +879,10 @@
   <div class="help-panel import-panel" id="importPanel">
     <h2>Import drawing</h2>
     <p class="import-hint">
-      Paste a list of walls/shapes as JSON, one object per item: <code>x</code>/<code>z</code> is the corner with the lowest coordinate, <code>w</code>/<code>d</code>/<code>h</code> is width/depth/height in meters, <code>y</code> is the optional base elevation (floor height, e.g. an upper storey), <code>color</code> is optional.
+      Paste a list of walls/shapes as JSON, one object per item: <code>x</code>/<code>z</code> is the corner with the lowest coordinate, <code>w</code>/<code>d</code>/<code>h</code> is width/depth/height in meters, <code>y</code> is the optional base elevation (floor height, e.g. an upper storey), <code>color</code> is optional, <code>layer</code> is an optional layer name (e.g. <code>"Ground floor"</code>) -- layers that don't exist yet are created automatically, so one paste can sort a whole multi-storey building onto separate layers.
       Ask Claude to work out this list for you from measurements you describe.
     </p>
-    <textarea id="importText" spellcheck="false" placeholder='[{"x":0,"z":0,"y":0,"w":6,"d":0.2,"h":2.5,"color":"#f4f0e6"}]'></textarea>
+    <textarea id="importText" spellcheck="false" placeholder='[{"x":0,"z":0,"y":0,"w":6,"d":0.2,"h":2.5,"color":"#f4f0e6","layer":"Ground floor"}]'></textarea>
     <div class="import-error" id="importError"></div>
     <div class="import-actions">
       <button class="tool-btn" id="importCancel">Cancel</button>
@@ -1469,7 +1469,7 @@
   var volumes = []; // { mesh, color, layerId, groupId }
 
   // ---- Layers & groups ----
-  var layers = [{ id: 1, name: "Lager 1", visible: true, locked: false }];
+  var layers = [{ id: 1, name: "Layer 1", visible: true, locked: false }];
   var nextLayerId = 2;
   var activeLayerId = 1;
   var groups = []; // { id, locked }
@@ -2120,7 +2120,7 @@
   });
   layerAddEl.addEventListener("click", function () {
     var id = nextLayerId++;
-    layers.push({ id: id, name: "Lager " + id, visible: true, locked: false });
+    layers.push({ id: id, name: "Layer " + id, visible: true, locked: false });
     activeLayerId = id;
     renderLayers();
     persistState();
@@ -2151,9 +2151,25 @@
       }
     }
     snapshot();
+    // optional per-item "layer" (a plain name, e.g. "Ground floor") lets one
+    // paste populate several layers at once, auto-creating any that don't
+    // exist yet; items with no "layer" field land on the current active
+    // layer, same as before this was added
+    var layerByName = {};
+    layers.forEach(function (l) { layerByName[l.name] = l.id; });
+    function layerIdForName(name) {
+      if (!name) return activeLayerId;
+      if (layerByName[name] !== undefined) return layerByName[name];
+      var id = nextLayerId++;
+      layers.push({ id: id, name: name, visible: true, locked: false });
+      layerByName[name] = id;
+      return id;
+    }
     var created = [];
     data.forEach(function (it) {
       var vol = makeVolume(it.x, it.z, Math.max(it.w, 0.02), Math.max(it.d, 0.02), Math.max(it.h, 0.02), it.color || PALETTE[0], typeof it.y === "number" ? it.y : 0);
+      vol.layerId = layerIdForName(it.layer);
+      vol.mesh.visible = layerOf(vol).visible;
       created.push(vol);
     });
     importErrorEl.textContent = "";
