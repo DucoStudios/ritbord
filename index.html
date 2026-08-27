@@ -101,7 +101,7 @@
   }
 
   #stage.tool-rectangle canvas,
-  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas { cursor: crosshair; }
+  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas { cursor: crosshair; }
   #stage.tool-pan canvas { cursor: grab; }
   #stage.tool-pan.dragging canvas { cursor: grabbing; }
   #stage.tool-paint canvas { cursor: pointer; }
@@ -120,11 +120,53 @@
     border: 1px solid var(--panel-border);
     border-radius: 14px;
     padding: 6px;
+    padding-right: 36px;
     box-shadow: 0 8px 24px var(--shadow);
     z-index: 10;
     width: max-content;
     max-width: calc(100vw - 36px);
+    transition: transform 180ms ease, opacity 180ms ease;
   }
+  .toolbar.collapsed {
+    transform: translateY(-130%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .toolbar-collapse-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: none;
+    border: none;
+    color: var(--steel);
+    cursor: pointer;
+    padding: 6px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 8px;
+  }
+  .toolbar-collapse-btn:hover { background: var(--paper-line); color: var(--ink); }
+
+  .toolbar-show-tab {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 11;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 8px 12px;
+    box-shadow: 0 8px 24px var(--shadow);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+  .toolbar-show-tab.visible { display: inline-flex; }
 
   @media (max-width: 720px) {
     .toolbar { row-gap: 4px; }
@@ -633,6 +675,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 3l-3.5 3.5M12 3l3.5 3.5"/><rect x="5" y="15" width="14" height="6" rx="1"/></svg>
       <span class="btn-label">Push/Pull</span>
     </button>
+    <button class="tool-btn" data-tool="roof" aria-pressed="false" title="Roof: click the flat top of a shape, drag up to fold it into a gable roof (G)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15L12 5l9 10"/><path d="M5.5 12.3V19h13v-6.7"/></svg>
+      <span class="btn-label">Roof</span>
+    </button>
     <button class="tool-btn" data-tool="scale" aria-pressed="false" title="Scale: stretch/shrink a whole shape along one axis (0)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6M4 4v6M4 4l6.5 6.5"/><path d="M20 20h-6M20 20v-6M20 20l-6.5-6.5"/><rect x="9" y="9" width="6" height="6" rx="0.5"/></svg>
       <span class="btn-label">Scale</span>
@@ -675,20 +721,20 @@
       <span class="btn-label">Clear guides</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="tool-btn" data-action="subtract" title="Subtract: select the shape to keep, shift-click the one to cut away">
+    <button class="tool-btn" data-action="subtract" title="Subtract: select the shape to keep, shift-click the one to cut away (S)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="1"/><rect x="9" y="9" width="12" height="12" rx="1" stroke-dasharray="2.5 2.5"/></svg>
       <span class="btn-label">Subtract</span>
     </button>
-    <button class="tool-btn" data-action="chamfer" title="Chamfer the edges of the selected shape">
+    <button class="tool-btn" data-action="chamfer" title="Chamfer the edges of the selected shape (C)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5z"/></svg>
       <span class="btn-label">Chamfer</span>
     </button>
     <span class="tool-sep"></span>
-    <button class="tool-btn" data-action="group" title="Group the selected shapes (shift-click more first)">
+    <button class="tool-btn" data-action="group" title="Group the selected shapes (shift-click more first) (U)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M8 11v2a2 2 0 002 2h2" stroke-dasharray="2 2"/></svg>
       <span class="btn-label">Group</span>
     </button>
-    <button class="tool-btn" data-action="lockgroup" title="Lock/unlock the selected group">
+    <button class="tool-btn" data-action="lockgroup" title="Lock/unlock the selected group (K)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="1.5"/><path d="M7.5 11V7.5a4.5 4.5 0 019 0V11"/></svg>
       <span class="btn-label">Lock</span>
     </button>
@@ -726,7 +772,15 @@
     <button class="icon-toggle" id="helpToggle" aria-pressed="false" title="Shortcuts and controls">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.3 9.2a2.7 2.7 0 015.2.9c0 1.8-2.5 1.9-2.5 3.6" stroke-linecap="round"/><circle cx="12" cy="17" r="0.15" fill="currentColor" stroke-width="2.6"/></svg>
     </button>
+    <button class="toolbar-collapse-btn" id="toolbarCollapseBtn" title="Hide toolbar (T)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+    </button>
   </div>
+
+  <button class="toolbar-show-tab" id="toolbarShowTab" title="Show toolbar (T)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    Toolbar
+  </button>
 
   <div class="hint" id="hint">Drag on the floor to draw a shape</div>
 
@@ -768,14 +822,18 @@
     <div class="help-row"><kbd>7</kbd><span>Circle (drag from center)</span></div>
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
     <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line</span></div>
+    <div class="help-row"><kbd>G</kbd><span>Roof: click a flat top, drag up to fold it into a gable roof</span></div>
     <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
     <div class="help-row"><kbd>Library panel</kbd><span>Place reference people, trees and vehicles</span></div>
     <div class="help-row"><kbd>Esc</kbd><span>Cancel a Line or Arc in progress</span></div>
     <div class="help-row"><kbd>⌘/Ctrl</kbd><kbd>Z</kbd><span>Undo</span></div>
     <div class="help-row"><kbd>Shift-click</kbd><span>Add to selection</span></div>
+    <div class="help-row"><kbd>T</kbd><span>Show/hide the toolbar</span></div>
     <h3>Groups &amp; layers</h3>
-    <div class="help-row"><kbd>Group</kbd><span>Bundle up the selected shapes</span></div>
-    <div class="help-row"><kbd>Lock</kbd><span>Lock/unlock the selected group</span></div>
+    <div class="help-row"><kbd>S</kbd><span>Subtract: select the shape to keep, shift-click the one to cut away</span></div>
+    <div class="help-row"><kbd>C</kbd><span>Chamfer the edges of the selected shape</span></div>
+    <div class="help-row"><kbd>U</kbd><span>Group the selected shapes (shift-click more first)</span></div>
+    <div class="help-row"><kbd>K</kbd><span>Lock/unlock the selected group</span></div>
     <div class="help-row"><kbd>Layers panel</kbd><span>New layer, show/hide, lock a whole layer</span></div>
     <h3>Mouse</h3>
     <div class="help-row"><kbd>Left-click, drag</kbd><span>Active tool</span></div>
@@ -840,6 +898,9 @@
   var dimDEl = document.getElementById("dimD");
   var dimHEl = document.getElementById("dimH");
   var swatchRailEl = document.getElementById("swatchRail");
+  var toolbarEl = document.querySelector(".toolbar");
+  var toolbarCollapseBtnEl = document.getElementById("toolbarCollapseBtn");
+  var toolbarShowTabEl = document.getElementById("toolbarShowTab");
   var scaleBarEl = document.getElementById("scaleBar");
   var scaleBarLineEl = document.getElementById("scaleBarLine");
   var scaleBarLabelEl = document.getElementById("scaleBarLabel");
@@ -1318,6 +1379,16 @@
   helpToggleEl.addEventListener("click", function () { toggleHelp(); });
   helpCloseEl.addEventListener("click", function () { toggleHelp(false); });
   helpPanelEl.addEventListener("click", function (e) { if (e.target === helpPanelEl) toggleHelp(false); });
+
+  // ---- Toolbar collapse: get it out of the way for an unobstructed look at
+  // the model; a small tab stays put so it's never actually lost ----
+  function toggleToolbar(hide) {
+    var next = hide !== undefined ? hide : !toolbarEl.classList.contains("collapsed");
+    toolbarEl.classList.toggle("collapsed", next);
+    toolbarShowTabEl.classList.toggle("visible", next);
+  }
+  toolbarCollapseBtnEl.addEventListener("click", function () { toggleToolbar(true); });
+  toolbarShowTabEl.addEventListener("click", function () { toggleToolbar(false); });
 
   // ---- Orbit / pan / zoom camera rig ----
   var target = new THREE.Vector3(0, 0.8, 0);
@@ -1865,6 +1936,7 @@
     scale: "Drag a surface to stretch or shrink the whole shape along that axis, anchored on the opposite side",
     rotate: "Drag a shape sideways to turn it (snaps to 90°), drag a figure/tree/car to face it any direction",
     pan: "Drag anywhere to move the view",
+    roof: "Click the flat top of a shape, drag up to fold it into a gable roof",
     move: "Drag a shape or a placed figure to move it (figures can stand on any floor), shift-click selects multiple shapes",
     paint: "Click a shape, then pick a color on the right",
     line: "Click points to sketch a shape, click near the start (or press Enter) to close it",
@@ -2034,6 +2106,10 @@
   var activeSwatch = PALETTE[0];
 
   window.addEventListener("keydown", function (e) {
+    // typing in the Import textarea, sun-panel date/number fields, etc. must
+    // never be hijacked by single-letter tool/action shortcuts
+    var activeTag = document.activeElement && document.activeElement.tagName;
+    if (activeTag === "INPUT" || activeTag === "TEXTAREA" || (document.activeElement && document.activeElement.isContentEditable)) return;
     if (e.metaKey || e.ctrlKey) {
       if (e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
       return;
@@ -2050,6 +2126,12 @@
     else if (e.key === "0") setTool("scale");
     else if (e.key.toLowerCase() === "r") setTool("rotate");
     else if (e.key.toLowerCase() === "h") setTool("pan");
+    else if (e.key.toLowerCase() === "g") setTool("roof");
+    else if (e.key.toLowerCase() === "s") subtractSelected();
+    else if (e.key.toLowerCase() === "c") chamferSelected();
+    else if (e.key.toLowerCase() === "u") groupSelected();
+    else if (e.key.toLowerCase() === "k") toggleLockSelectedGroup();
+    else if (e.key.toLowerCase() === "t") toggleToolbar();
     else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
@@ -2098,6 +2180,7 @@
   var scaling = null;      // { vol, plane, axis, sign, normal, hitPoint, sizeBefore, scaleBefore, posBefore, anchorWorld, anchorSide }
   var rotating = null;     // volume: { kind:"volume", vol, startX, appliedSteps } / prop: { kind:"prop", entry, startX, startRotationY }
   var ROTATE_STEP_PX = 70; // pixels of horizontal drag per 90-degree detent for volumes
+  var roofing = null;      // { vol, xMin,xMax,zMin,zMax, eaveY, ridgeAxis, ridgeCoord, plane, normal, hitPoint, previewMesh, lastRidgeY }
   var moving = null;       // { startPoint, items: [{vol, x0, z0}] }
   var movingProp = null;   // { entry, group }
   var faceDrawing = null;  // { targetVol, axis, sign, faceOffset, plane, startU, startV, mesh }
@@ -2213,6 +2296,7 @@
     if (pulling) { pulling = null; hideOutline(); }
     if (scaling) { if (scaling.vol.isCompound) bakeMeshTransform(scaling.vol.mesh); scaling = null; hideOutline(); }
     if (rotating) { rotating = null; }
+    if (roofing) { discardRoofPreview(); roofing = null; }
     if (faceDrawing) { scene.remove(faceDrawing.mesh); faceDrawing.mesh.material.dispose(); faceDrawing = null; }
     if (sketchPull) { sketchPull = null; }
     if (moving) { moving = null; }
@@ -2383,6 +2467,111 @@
       vol.mesh.scale.x = d;
       vol.mesh.scale.z = w;
     }
+  }
+
+  // ---- Roof: draw/drag a ridge line on a flat top face to fold it into a
+  // gable roof, SketchUp-style. Built as a separate closed triangular-prism
+  // solid unioned onto the existing volume via the same CSG machinery as the
+  // draw-on-face "bump" feature, rather than by deforming the flat face's own
+  // geometry directly -- much lower risk, and the walls below the eave line
+  // are guaranteed untouched. ridgeAxis is which world axis the ridge runs
+  // parallel to (always the longer footprint dimension); the two side faces
+  // perpendicular to that axis become the roof's rectangular slopes, and the
+  // two end faces get triangular gables.
+  function buildGableRoofPrismGeometry(xMin, xMax, zMin, zMax, eaveY, ridgeAxis, ridgeCoord, ridgeY) {
+    var A0, A1, A2, B0, B1, B2;
+    if (ridgeAxis === "x") {
+      A0 = new THREE.Vector3(xMin, eaveY, zMin);
+      A1 = new THREE.Vector3(xMin, eaveY, zMax);
+      A2 = new THREE.Vector3(xMin, ridgeY, ridgeCoord);
+      B0 = new THREE.Vector3(xMax, eaveY, zMin);
+      B1 = new THREE.Vector3(xMax, eaveY, zMax);
+      B2 = new THREE.Vector3(xMax, ridgeY, ridgeCoord);
+    } else {
+      A0 = new THREE.Vector3(xMin, eaveY, zMin);
+      A1 = new THREE.Vector3(xMax, eaveY, zMin);
+      A2 = new THREE.Vector3(ridgeCoord, ridgeY, zMin);
+      B0 = new THREE.Vector3(xMin, eaveY, zMax);
+      B1 = new THREE.Vector3(xMax, eaveY, zMax);
+      B2 = new THREE.Vector3(ridgeCoord, ridgeY, zMax);
+    }
+    // triangles wound so each face's cross product points outward (verified
+    // numerically -- see rotate/roof Node tests -- rather than reasoned by eye).
+    // Swapping which world axis is "along the ridge" mirrors handedness (only
+    // two of the three axes swap, y stays put), so the z-axis case needs every
+    // triangle's winding reversed relative to the x-axis case.
+    function tri(a, b, c) { return ridgeAxis === "z" ? [a, c, b] : [a, b, c]; }
+    var tris = [
+      tri(A0, A1, A2),       // start-end cap
+      tri(B1, B0, B2),       // far-end cap
+      tri(A0, A2, B2), tri(A0, B2, B0),   // slope on the A0/B0 side
+      tri(A1, B1, B2), tri(A1, B2, A2),   // slope on the A1/B1 side
+      tri(A0, B0, B1), tri(A0, B1, A1)    // flat underside, sitting on the existing top face
+    ];
+    var positions = [], normals = [];
+    tris.forEach(function (t) {
+      var n = new THREE.Vector3().subVectors(t[1], t[0]).cross(new THREE.Vector3().subVectors(t[2], t[0])).normalize();
+      t.forEach(function (p) {
+        positions.push(p.x, p.y, p.z);
+        normals.push(n.x, n.y, n.z);
+      });
+    });
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+    return geo;
+  }
+
+  function beginRoof(vol, hitPoint) {
+    var fp = wholeFaceFootprint(vol.mesh, "y", 1, hitPoint.y);
+    if (!isFinite(fp.uMin)) return false;
+    var xMin = fp.uMin, xMax = fp.uMax, zMin = fp.vMin, zMax = fp.vMax;
+    var xSpan = xMax - xMin, zSpan = zMax - zMin;
+    var margin = Math.min(0.4, Math.min(xSpan, zSpan) * 0.15);
+    var ridgeAxis, ridgeCoord;
+    if (xSpan >= zSpan) {
+      ridgeAxis = "x";
+      ridgeCoord = Math.max(zMin + margin, Math.min(zMax - margin, hitPoint.z));
+    } else {
+      ridgeAxis = "z";
+      ridgeCoord = Math.max(xMin + margin, Math.min(xMax - margin, hitPoint.x));
+    }
+    var eaveY = hitPoint.y;
+
+    var n = new THREE.Vector3(0, 1, 0);
+    var camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
+    var proj = camDir.clone().sub(n.clone().multiplyScalar(camDir.dot(n)));
+    if (proj.lengthSq() < 1e-6) proj.set(1, 0, 0);
+    var plane = new THREE.Plane().setFromNormalAndCoplanarPoint(proj.normalize(), hitPoint);
+
+    var previewMat = new THREE.MeshBasicMaterial({ color: 0xc1601f, transparent: true, opacity: 0.4, depthTest: false });
+    var previewGeo = buildGableRoofPrismGeometry(xMin, xMax, zMin, zMax, eaveY, ridgeAxis, ridgeCoord, eaveY + 0.05);
+    var previewMesh = new THREE.Mesh(previewGeo, previewMat);
+    scene.add(previewMesh);
+
+    roofing = {
+      vol: vol, xMin: xMin, xMax: xMax, zMin: zMin, zMax: zMax, eaveY: eaveY,
+      ridgeAxis: ridgeAxis, ridgeCoord: ridgeCoord,
+      plane: plane, normal: n, hitPoint: hitPoint.clone(),
+      previewMesh: previewMesh, lastRidgeY: eaveY + 0.05
+    };
+    return true;
+  }
+
+  function updateRoofPreview(ridgeY) {
+    roofing.lastRidgeY = ridgeY;
+    var oldGeo = roofing.previewMesh.geometry;
+    roofing.previewMesh.geometry = buildGableRoofPrismGeometry(
+      roofing.xMin, roofing.xMax, roofing.zMin, roofing.zMax, roofing.eaveY, roofing.ridgeAxis, roofing.ridgeCoord, ridgeY
+    );
+    oldGeo.dispose();
+    showDims(roofing.xMax - roofing.xMin, roofing.zMax - roofing.zMin, ridgeY - roofing.eaveY);
+  }
+
+  function discardRoofPreview() {
+    scene.remove(roofing.previewMesh);
+    roofing.previewMesh.geometry.dispose();
+    roofing.previewMesh.material.dispose();
   }
 
   // ---- Line / Circle / Arc: extruded custom shapes, built via THREE.Shape.
@@ -2981,6 +3170,24 @@
         rotating = { kind: "prop", entry: propRo, startX: e.clientX, startRotationY: propRo.group.rotation.y };
         renderer.domElement.setPointerCapture(e.pointerId);
       }
+    } else if (tool === "roof") {
+      var hitRf = volumeHit(e);
+      var volRf = hitRf ? volumeOf(hitRf.object) : null;
+      if (hitRf && volRf && isLocked(volRf)) {
+        setHint("The shape is locked (group or layer)");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
+      var faceRf = hitRf ? pickFace(hitRf) : null;
+      if (hitRf && volRf && faceRf && faceRf.axis === "y" && faceRf.sign === 1) {
+        if (beginRoof(volRf, hitRf.point)) {
+          selectSingle(volRf);
+          renderer.domElement.setPointerCapture(e.pointerId);
+        }
+      } else if (hitRf) {
+        setHint("Click the flat top of a shape to start a roof");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+      }
     } else if (tool === "paint") {
       var hit2 = volumeHit(e);
       if (hit2) {
@@ -3243,6 +3450,17 @@
       return;
     }
 
+    if (roofing) {
+      updatePointer(e);
+      raycaster.setFromCamera(pointerNDC, camera);
+      var qr = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(roofing.plane, qr)) {
+        var deltaR = qr.clone().sub(roofing.hitPoint).dot(roofing.normal);
+        updateRoofPreview(roofing.eaveY + Math.max(0.05, Math.min(40, deltaR)));
+      }
+      return;
+    }
+
     if (faceDrawing) {
       updatePointer(e);
       raycaster.setFromCamera(pointerNDC, camera);
@@ -3362,6 +3580,40 @@
       hideOutline();
     }
     if (rotating) { rotating = null; }
+
+    if (roofing) {
+      var extraH = roofing.lastRidgeY - roofing.eaveY;
+      discardRoofPreview();
+      if (extraH < 0.15) {
+        hideDims();
+      } else {
+        snapshot();
+        var roofPrismGeo = buildGableRoofPrismGeometry(
+          roofing.xMin, roofing.xMax, roofing.zMin, roofing.zMax, roofing.eaveY,
+          roofing.ridgeAxis, roofing.ridgeCoord, roofing.lastRidgeY
+        );
+        var roofPrismMesh = new THREE.Mesh(roofPrismGeo);
+        roofPrismMesh.updateMatrixWorld(true);
+        var roofTargetVol = roofing.vol;
+        var roofTargetCSG = CSG.fromPolygons(meshToCSGPolygons(roofTargetVol.mesh));
+        var roofPrismCSG = CSG.fromPolygons(meshToCSGPolygons(roofPrismMesh));
+        var roofResultCSG = roofTargetCSG.union(roofPrismCSG);
+        var roofColor = representativeColor(roofTargetVol);
+        var roofLayerId = roofTargetVol.layerId, roofGroupId = roofTargetVol.groupId;
+        removeVolume(roofTargetVol);
+        var roofResultPolys = roofResultCSG.toPolygons();
+        if (roofResultPolys.length) {
+          var roofGeo = csgPolygonsToGeometry(roofResultPolys);
+          roofGeo.computeBoundingSphere();
+          var roofVol = addCompoundVolume(roofGeo, roofColor, roofLayerId, roofGroupId);
+          selectSingle(roofVol);
+        } else {
+          clearSelection();
+        }
+        persistState();
+      }
+      roofing = null;
+    }
 
     if (faceDrawing) {
       var uSize = faceDrawing.uMax - faceDrawing.uMin, vSize = faceDrawing.vMax - faceDrawing.vMin;
