@@ -2971,7 +2971,12 @@
   var PROP_COLORS = {
     skin: 0xd8b898, hair: 0x4a3728, hat: 0xdcc48a, shirt: 0x8a99a8, pants: 0x4a4f5c,
     dress: 0xb99bb0, treeTrunk: 0x6b4e34, pineGreen: 0x4f7a4a, cypressGreen: 0x3c6b45,
-    carBody: 0xb9c2c9, wheel: 0x2b2b2b, dogFur: 0xa9835f
+    carBody: 0xb9c2c9, wheel: 0x2b2b2b, dogFur: 0xa9835f,
+    spaceshipHull: 0xd7dde2, spaceshipStripe: 0xc23b3b, spaceshipGlass: 0x6fd0e0, spaceshipFlame: 0xf2a33c,
+    poolWater: 0x2ea6c9,
+    magnetBody: 0xc0392b, magnetPole: 0xe8e8e8,
+    heliBody: 0xcf4a30, heliGlass: 0x8fd1e0, rotorDark: 0x2b2b2b,
+    planeBody: 0xe9e4d8, planeStripe: 0x2f6fb0, planeGlass: 0x8fd1e0
   };
 
   function propMat(hex) { return new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85, metalness: 0.02 }); }
@@ -3164,13 +3169,207 @@
     return finishProp(g);
   }
 
+  function buildSpaceship() {
+    var g = new THREE.Group();
+    var hullMat = propMat(PROP_COLORS.spaceshipHull);
+    var stripeMat = propMat(PROP_COLORS.spaceshipStripe);
+    var engine = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.46, 0.5, 16), hullMat);
+    engine.position.y = 0.25;
+    g.add(engine);
+    var flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.3, 12), propMat(PROP_COLORS.spaceshipFlame));
+    flame.rotation.x = Math.PI;
+    flame.position.y = 0.15;
+    g.add(flame);
+    var body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.8, 16), hullMat);
+    body.position.y = 1.4;
+    g.add(body);
+    var stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.22, 16), stripeMat);
+    stripe.position.y = 1.4;
+    g.add(stripe);
+    var nose = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.9, 16), hullMat);
+    nose.position.y = 2.75;
+    g.add(nose);
+    var win = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), propMat(PROP_COLORS.spaceshipGlass));
+    win.scale.set(1, 1, 0.5);
+    win.position.set(0, 2.0, 0.27);
+    g.add(win);
+    var finGeo = new THREE.ConeGeometry(0.22, 0.7, 4);
+    [0, 120, 240].forEach(function (deg) {
+      var fin = new THREE.Mesh(finGeo, stripeMat);
+      fin.scale.set(1, 1, 0.28);
+      var rad = Math.PI / 180 * deg;
+      fin.position.set(Math.sin(rad) * 0.42, 0.55, Math.cos(rad) * 0.42);
+      fin.rotation.y = rad;
+      g.add(fin);
+    });
+    return finishProp(g);
+  }
+
+  function buildPoolWater() {
+    var g = new THREE.Group();
+    var mat = new THREE.MeshStandardMaterial({ color: PROP_COLORS.poolWater, roughness: 0.15, metalness: 0.05, transparent: true, opacity: 0.82 });
+    var water = new THREE.Mesh(new THREE.BoxGeometry(4, 0.08, 2.5), mat);
+    water.position.y = 0.04;
+    g.add(water);
+    return finishProp(g);
+  }
+
+  function buildMagnet() {
+    var g = new THREE.Group();
+    var bodyMat = propMat(PROP_COLORS.magnetBody);
+    var poleMat = propMat(PROP_COLORS.magnetPole);
+    var tube = 0.1, R = 0.55, legBottom = 0.16, segs = 10;
+    var prev = null;
+    for (var i = 0; i <= segs; i++) {
+      var angle = Math.PI - (Math.PI * i / segs);
+      var pt = new THREE.Vector3(Math.cos(angle) * R, R + Math.sin(angle) * R, 0);
+      if (prev) g.add(strutBetween(prev, pt, tube, bodyMat));
+      prev = pt;
+    }
+    var leftTop = new THREE.Vector3(-R, R, 0), rightTop = new THREE.Vector3(R, R, 0);
+    var leftBottom = new THREE.Vector3(-R, legBottom, 0), rightBottom = new THREE.Vector3(R, legBottom, 0);
+    g.add(strutBetween(leftTop, leftBottom, tube, bodyMat));
+    g.add(strutBetween(rightTop, rightBottom, tube, bodyMat));
+    var capGeo = new THREE.CylinderGeometry(tube * 1.05, tube * 1.05, legBottom, 12);
+    [leftBottom, rightBottom].forEach(function (b) {
+      var cap = new THREE.Mesh(capGeo, poleMat);
+      cap.position.set(b.x, legBottom / 2, b.z);
+      g.add(cap);
+    });
+    return finishProp(g);
+  }
+
+  function buildHelicopter() {
+    var g = new THREE.Group();
+    var bodyMat = propMat(PROP_COLORS.heliBody);
+    var glassMat = propMat(PROP_COLORS.heliGlass);
+    var darkMat = propMat(PROP_COLORS.rotorDark);
+    var cabin = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12), glassMat);
+    cabin.scale.set(1.15, 0.95, 1.0);
+    cabin.position.set(0.55, 1.35, 0);
+    g.add(cabin);
+    var body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 12), bodyMat);
+    body.scale.set(1.5, 0.85, 0.9);
+    body.position.set(-0.2, 1.3, 0);
+    g.add(body);
+    var boom = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.16, 2.3, 12), bodyMat);
+    boom.rotation.z = Math.PI / 2;
+    boom.position.set(-1.9, 1.35, 0);
+    g.add(boom);
+    var tailFin = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.6, 10), bodyMat);
+    tailFin.rotation.z = -Math.PI / 2;
+    tailFin.position.set(-3.05, 1.55, 0);
+    g.add(tailFin);
+    var tailHubPos = new THREE.Vector3(-3.05, 1.55, 0.22);
+    var tailRotorHub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 8), darkMat);
+    tailRotorHub.rotation.x = Math.PI / 2;
+    tailRotorHub.position.copy(tailHubPos);
+    g.add(tailRotorHub);
+    var tailBladeGeo = new THREE.BoxGeometry(0.03, 0.55, 0.07);
+    [0, Math.PI / 2].forEach(function (rot) {
+      var blade = new THREE.Mesh(tailBladeGeo, darkMat);
+      blade.position.copy(tailHubPos);
+      blade.rotation.z = rot;
+      g.add(blade);
+    });
+    var mastY = 1.75;
+    var mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.35, 10), darkMat);
+    mast.position.set(-0.2, mastY - 0.17, 0);
+    g.add(mast);
+    var hub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 10), darkMat);
+    hub.position.set(-0.2, mastY, 0);
+    g.add(hub);
+    var mainBladeGeo = new THREE.BoxGeometry(5.4, 0.03, 0.14);
+    [0, Math.PI / 2].forEach(function (rot) {
+      var blade = new THREE.Mesh(mainBladeGeo, darkMat);
+      blade.position.set(-0.2, mastY + 0.05, 0);
+      blade.rotation.y = rot;
+      g.add(blade);
+    });
+    var skidGeo = new THREE.CylinderGeometry(0.035, 0.035, 2.6, 8);
+    [-0.35, 0.35].forEach(function (z) {
+      var skid = new THREE.Mesh(skidGeo, darkMat);
+      skid.rotation.z = Math.PI / 2;
+      skid.position.set(-0.25, 0.42, z);
+      g.add(skid);
+    });
+    [[-1.1, -0.35], [-1.1, 0.35], [0.55, -0.35], [0.55, 0.35]].forEach(function (p) {
+      g.add(strutBetween(new THREE.Vector3(p[0], 0.95, p[1]), new THREE.Vector3(p[0], 0.42, p[1]), 0.03, darkMat));
+    });
+    return finishProp(g);
+  }
+
+  function buildGoldstreamPlane() {
+    var g = new THREE.Group();
+    var bodyMat = propMat(PROP_COLORS.planeBody);
+    var stripeMat = propMat(PROP_COLORS.planeStripe);
+    var glassMat = propMat(PROP_COLORS.planeGlass);
+    var darkMat = propMat(PROP_COLORS.rotorDark);
+    var fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 4.2, 14), bodyMat);
+    fuselage.rotation.z = Math.PI / 2;
+    fuselage.position.set(0, 1.0, 0);
+    g.add(fuselage);
+    var nose = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.7, 14), bodyMat);
+    nose.rotation.z = Math.PI / 2;
+    nose.position.set(2.45, 1.0, 0);
+    g.add(nose);
+    var tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.1, 12), bodyMat);
+    tailCone.rotation.z = -Math.PI / 2;
+    tailCone.position.set(-2.65, 1.05, 0);
+    g.add(tailCone);
+    var canopy = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), glassMat);
+    canopy.scale.set(1.3, 0.7, 0.85);
+    canopy.position.set(0.9, 1.28, 0);
+    g.add(canopy);
+    var propGeo = new THREE.BoxGeometry(0.05, 1.4, 0.14);
+    var prop1 = new THREE.Mesh(propGeo, darkMat);
+    prop1.position.set(2.85, 1.0, 0);
+    g.add(prop1);
+    var prop2 = new THREE.Mesh(propGeo, darkMat);
+    prop2.position.set(2.85, 1.0, 0);
+    prop2.rotation.x = Math.PI / 2;
+    g.add(prop2);
+    var spinner = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.25, 10), darkMat);
+    spinner.rotation.z = Math.PI / 2;
+    spinner.position.set(2.9, 1.0, 0);
+    g.add(spinner);
+    var wing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 7.6), bodyMat);
+    wing.position.set(0.15, 0.98, 0);
+    g.add(wing);
+    var wingStripe = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.03, 0.5), stripeMat);
+    wingStripe.position.set(0.15, 1.03, 0);
+    g.add(wingStripe);
+    var tailplane = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.06, 2.4), bodyMat);
+    tailplane.position.set(-2.55, 1.05, 0);
+    g.add(tailplane);
+    var fin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.85, 0.06), stripeMat);
+    fin.position.set(-2.55, 1.55, 0);
+    g.add(fin);
+    var mainGearGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.08, 12);
+    [[0.4, -1.4], [0.4, 1.4]].forEach(function (p) {
+      g.add(strutBetween(new THREE.Vector3(p[0], 0.98, p[1]), new THREE.Vector3(p[0], 0.32, p[1]), 0.035, darkMat));
+      var wheel = new THREE.Mesh(mainGearGeo, darkMat);
+      wheel.rotation.x = Math.PI / 2;
+      wheel.position.set(p[0], 0.28, p[1]);
+      g.add(wheel);
+    });
+    g.add(strutBetween(new THREE.Vector3(2.2, 1.0, 0), new THREE.Vector3(2.2, 0.4, 0), 0.03, darkMat));
+    var noseWheel = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.07, 12), darkMat);
+    noseWheel.rotation.x = Math.PI / 2;
+    noseWheel.position.set(2.2, 0.34, 0);
+    g.add(noseWheel);
+    return finishProp(g);
+  }
+
   var PROP_BUILDERS = {
     man: buildMan, woman: buildWoman, girl9: buildGirl9, boy5: buildBoy5, girl3: buildGirl3, dog: buildDog,
-    pine: buildPineTree, pinuspinea: buildPinusPinea, cypress: buildCypress, car: buildCar, bicycle: buildBicycle
+    pine: buildPineTree, pinuspinea: buildPinusPinea, cypress: buildCypress, car: buildCar, bicycle: buildBicycle,
+    spaceship: buildSpaceship, poolwater: buildPoolWater, magnet: buildMagnet, helicopter: buildHelicopter, goldstream: buildGoldstreamPlane
   };
   var PROP_LABELS = {
     man: "Man (hat)", woman: "Woman (bun)", girl9: "Girl, 9y", boy5: "Boy, 5y (cap)", girl3: "Girl, 3y", dog: "Dog",
-    pine: "Pine tree", pinuspinea: "Pinus pinea", cypress: "Cypress", car: "Car", bicycle: "Bicycle"
+    pine: "Pine tree", pinuspinea: "Pinus pinea", cypress: "Cypress", car: "Car", bicycle: "Bicycle",
+    spaceship: "Spaceship", poolwater: "Pool water", magnet: "Magnet (large)", helicopter: "Helicopter", goldstream: "Goldstream plane"
   };
   var PROP_ICONS = {
     man: '<circle cx="12" cy="7" r="3"/><path d="M12 10v7M8 13h8M9 21l3-4 3 4"/>',
@@ -3183,7 +3382,12 @@
     pinuspinea: '<path d="M4.5 9.5c1-3 4-5 7.5-5s6.5 2 7.5 5c-1 1.6-4 2.6-7.5 2.6s-6.5-1-7.5-2.6z"/><path d="M12 12v9"/>',
     cypress: '<path d="M12 2c3 4 3 14 0 19-3-5-3-15 0-19z"/>',
     car: '<rect x="3" y="10" width="18" height="6" rx="2.5"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/>',
-    bicycle: '<circle cx="6" cy="17" r="3.4"/><circle cx="18" cy="17" r="3.4"/><path d="M6 17l5-9h5l2 5M11 8H8.5M9 17h9"/>'
+    bicycle: '<circle cx="6" cy="17" r="3.4"/><circle cx="18" cy="17" r="3.4"/><path d="M6 17l5-9h5l2 5M11 8H8.5M9 17h9"/>',
+    spaceship: '<path d="M12 2c2.5 3 3 7 3 10.5L12 16l-3-3.5C9 9 9.5 5 12 2z"/><circle cx="12" cy="9" r="1.4"/><path d="M9 13l-2 4 3-1M15 13l2 4-3-1"/>',
+    poolwater: '<path d="M2 9c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M2 14c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M2 19c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+    magnet: '<path d="M6 3v8a6 6 0 0012 0V3"/><path d="M6 3h3M15 3h3M6 8h3M15 8h3"/>',
+    helicopter: '<circle cx="10" cy="12" r="3.4"/><path d="M13.4 12h6M17 12v3M4 9h12M10 15.4V19"/>',
+    goldstream: '<path d="M12 3v15M4 10l8 3 8-3M9 20l3-2 3 2"/>'
   };
 
   var props = [];
