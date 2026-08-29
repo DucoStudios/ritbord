@@ -2481,6 +2481,7 @@
     else if (e.key.toLowerCase() === "t") toggleToolbar();
     else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
+    else if (e.key === "Enter" && faceLineDrawing && faceLineDrawing.points.length >= 3) finalizeFaceLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
   });
 
@@ -2539,7 +2540,9 @@
   var sketchPull = null;   // { plane, normal, hitPoint, depth0 }
   var paintDragActive = false;
   var lineDrawing = null;   // { points: [Vector3], line: THREE.Line }
+  var faceLineDrawing = null;  // { targetVol, axis, sign, faceOffset, plane, points: [{u,v}], line }
   var circleDrawing = null; // { center, mesh, radius }
+  var faceCircleDrawing = null; // { targetVol, axis, sign, faceOffset, plane, center: {u,v}, radius, mesh }
   var arcDrawing = null;    // { phase: 'radius'|'sweep', center, radius, startAngle, sweepAccum, lastRawAngle, mesh, radiusLine }
   var tapeDrawing = null;   // { origin, line }
 
@@ -2576,12 +2579,52 @@
   }
 
   function cancelLineDrawing() {
-    if (!lineDrawing) return;
-    scene.remove(lineDrawing.line);
-    lineDrawing.line.geometry.dispose();
-    lineDrawing = null;
+    if (lineDrawing) {
+      scene.remove(lineDrawing.line);
+      lineDrawing.line.geometry.dispose();
+      lineDrawing = null;
+      hideDims();
+      hideInferenceOverlay();
+    }
+    cancelFaceLineDrawing();
+  }
+
+  function cancelFaceLineDrawing() {
+    if (!faceLineDrawing) return;
+    scene.remove(faceLineDrawing.line);
+    faceLineDrawing.line.geometry.dispose();
+    faceLineDrawing = null;
     hideDims();
     hideInferenceOverlay();
+  }
+
+  function updateFaceLinePreview(cursorUV) {
+    var pts = faceLineDrawing.points.slice();
+    if (cursorUV) pts.push(cursorUV);
+    if (pts.length > 1) pts.push(pts[0]);
+    var offset = faceLineDrawing.faceOffset + faceLineDrawing.sign * 0.006;
+    var arr = [];
+    pts.forEach(function (p) {
+      var w = faceUVToWorld(faceLineDrawing.axis, p.u, p.v, offset);
+      arr.push(w.x, w.y, w.z);
+    });
+    if (faceLineDrawing.line.geometry) faceLineDrawing.line.geometry.dispose();
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    faceLineDrawing.line.geometry = geo;
+  }
+
+  function finalizeFaceLineDrawing() {
+    var polygon = faceLineDrawing.points.slice();
+    scene.remove(faceLineDrawing.line);
+    faceLineDrawing.line.geometry.dispose();
+    var fd = faceLineDrawing;
+    faceLineDrawing = null;
+    hideDims();
+    hideInferenceOverlay();
+    if (polygon.length < 3) return;
+    clearPendingSketch();
+    startPendingSketchFromPolygon(fd, polygon);
   }
 
   function updateLinePreview(cursor) {
@@ -2603,10 +2646,43 @@
   }
 
   function cancelCircleDrawing() {
-    if (!circleDrawing) return;
-    scene.remove(circleDrawing.mesh);
-    circleDrawing = null;
+    if (circleDrawing) {
+      scene.remove(circleDrawing.mesh);
+      circleDrawing = null;
+      hideDims();
+    }
+    cancelFaceCircleDrawing();
+  }
+
+  function cancelFaceCircleDrawing() {
+    if (!faceCircleDrawing) return;
+    scene.remove(faceCircleDrawing.mesh);
+    faceCircleDrawing.mesh.geometry.dispose();
+    faceCircleDrawing.mesh.material.dispose();
+    faceCircleDrawing = null;
     hideDims();
+  }
+
+  function updateFaceCirclePreview(radius) {
+    faceCircleDrawing.radius = radius;
+    var polygon = circlePointsUV(faceCircleDrawing.center.u, faceCircleDrawing.center.v, radius, 40);
+    var nA = faceCircleDrawing.faceOffset, nB = faceCircleDrawing.faceOffset + faceCircleDrawing.sign * 0.02;
+    var geo = extrudePolygonOnFace(faceCircleDrawing.axis, polygon, Math.min(nA, nB), Math.max(nA, nB));
+    faceCircleDrawing.mesh.geometry.dispose();
+    faceCircleDrawing.mesh.geometry = geo;
+    showDims(radius * 2, radius * 2, 0);
+  }
+
+  function finalizeFaceCircleDrawing() {
+    var fd = faceCircleDrawing;
+    if (fd.radius < 0.1) { cancelFaceCircleDrawing(); return; }
+    var polygon = circlePointsUV(fd.center.u, fd.center.v, fd.radius, 40);
+    scene.remove(fd.mesh);
+    fd.mesh.geometry.dispose();
+    fd.mesh.material.dispose();
+    faceCircleDrawing = null;
+    clearPendingSketch();
+    startPendingSketchFromPolygon(fd, polygon);
   }
 
   function cancelArcDrawing() {
@@ -3530,6 +3606,7 @@
     if (pendingSketch) {
       scene.remove(pendingSketch.mesh);
       pendingSketch.mesh.material.dispose();
+      if (pendingSketch.mesh.geometry !== centeredBoxGeo) pendingSketch.mesh.geometry.dispose();
       pendingSketch = null;
     }
   }
@@ -3568,6 +3645,118 @@
       });
     }
     return { uMin: uMin, uMax: uMax, vMin: vMin, vMax: vMax };
+  }
+
+  function faceUVToWorld(axis, u, v, n) {
+    if (axis === "x") return new THREE.Vector3(n, u, v);
+    if (axis === "y") return new THREE.Vector3(u, n, v);
+    return new THREE.Vector3(u, v, n);
+  }
+
+  function axisUnitVector(axis) {
+    return axis === "x" ? new THREE.Vector3(1, 0, 0) : axis === "y" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  }
+
+  function circlePointsUV(cu, cv, radius, segments) {
+    var pts = [];
+    for (var i = 0; i < segments; i++) {
+      var a = (i / segments) * Math.PI * 2;
+      pts.push({ u: cu + radius * Math.cos(a), v: cv + radius * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  function polygonBoundsUV(uvPoints) {
+    var uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    uvPoints.forEach(function (p) {
+      uMin = Math.min(uMin, p.u); uMax = Math.max(uMax, p.u);
+      vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v);
+    });
+    return { uMin: uMin, uMax: uMax, vMin: vMin, vMax: vMax };
+  }
+
+  // Extrudes an arbitrary closed polygon (given in a face's own u,v coordinates --
+  // see faceUV/faceUVToWorld) into a solid slab between n=nStart and n=nEnd along
+  // the given world axis. Used to let Line/Circle sketch arbitrary shapes directly
+  // on an existing face (generalizing the axis-aligned-rectangle-only sketch that
+  // Rectangle already does), then push/pull them via the same CSG union/subtract
+  // as the rest of the sketch-on-face flow. Cap/wall normals are self-corrected
+  // (checked against the expected outward direction, flipped if wrong) rather than
+  // relying on the input polygon's winding, since the three axis->world mappings
+  // don't all preserve handedness the same way -- verified against known cubes
+  // for all 3 axes x2 signs before this shipped.
+  function extrudePolygonOnFace(axis, uvPoints, nStart, nEnd) {
+    var count = uvPoints.length;
+    var shape2D = uvPoints.map(function (p) { return new THREE.Vector2(p.u, p.v); });
+    var triIdx = THREE.ShapeUtils.triangulateShape(shape2D, []);
+    var axisVec = axisUnitVector(axis);
+    var positions = [], normals = [];
+
+    function pushTri(pA, pB, pC, expectedDir) {
+      var e1 = new THREE.Vector3().subVectors(pB, pA);
+      var e2 = new THREE.Vector3().subVectors(pC, pA);
+      var n = new THREE.Vector3().crossVectors(e1, e2);
+      if (n.lengthSq() < 1e-12) return;
+      n.normalize();
+      if (expectedDir && n.dot(expectedDir) < 0) { var t = pB; pB = pC; pC = t; n.negate(); }
+      [pA, pB, pC].forEach(function (p) {
+        positions.push(p.x, p.y, p.z);
+        normals.push(n.x, n.y, n.z);
+      });
+    }
+
+    var outward = axisVec, inward = axisVec.clone().negate();
+    triIdx.forEach(function (tri) {
+      var a = uvPoints[tri[0]], b = uvPoints[tri[1]], c = uvPoints[tri[2]];
+      pushTri(faceUVToWorld(axis, a.u, a.v, nEnd), faceUVToWorld(axis, b.u, b.v, nEnd), faceUVToWorld(axis, c.u, c.v, nEnd), outward);
+      pushTri(faceUVToWorld(axis, a.u, a.v, nStart), faceUVToWorld(axis, b.u, b.v, nStart), faceUVToWorld(axis, c.u, c.v, nStart), inward);
+    });
+
+    var cu = 0, cv = 0;
+    uvPoints.forEach(function (p) { cu += p.u; cv += p.v; });
+    cu /= count; cv /= count;
+
+    for (var i = 0; i < count; i++) {
+      var j = (i + 1) % count;
+      var a = uvPoints[i], b = uvPoints[j];
+      var midU = (a.u + b.u) / 2, midV = (a.v + b.v) / 2;
+      var edgeU = b.u - a.u, edgeV = b.v - a.v;
+      var outU = edgeV, outV = -edgeU;
+      if (outU * (midU - cu) + outV * (midV - cv) < 0) { outU = -outU; outV = -outV; }
+      var wallOutward = faceUVToWorld(axis, outU, outV, 0).sub(faceUVToWorld(axis, 0, 0, 0)).normalize();
+      var aStart = faceUVToWorld(axis, a.u, a.v, nStart), bStart = faceUVToWorld(axis, b.u, b.v, nStart);
+      var aEnd = faceUVToWorld(axis, a.u, a.v, nEnd), bEnd = faceUVToWorld(axis, b.u, b.v, nEnd);
+      pushTri(aStart, bStart, bEnd, wallOutward);
+      pushTri(aStart, bEnd, aEnd, wallOutward);
+    }
+
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
+  function pickPointOnPlane(e, plane) {
+    updatePointer(e);
+    raycaster.setFromCamera(pointerNDC, camera);
+    var p = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(plane, p)) return null;
+    return p;
+  }
+
+  function startPendingSketchFromPolygon(fd, polygon) {
+    var b = polygonBoundsUV(polygon);
+    var nA = fd.faceOffset, nB = fd.faceOffset + fd.sign * 0.02;
+    var mat = new THREE.MeshBasicMaterial({ color: 0xc1601f, transparent: true, opacity: 0.45, depthTest: false, side: THREE.DoubleSide });
+    var geo = extrudePolygonOnFace(fd.axis, polygon, Math.min(nA, nB), Math.max(nA, nB));
+    var mesh = new THREE.Mesh(geo, mat);
+    scene.add(mesh);
+    pendingSketch = {
+      targetVol: fd.targetVol, axis: fd.axis, sign: fd.sign, faceOffset: fd.faceOffset,
+      uMin: b.uMin, uMax: b.uMax, vMin: b.vMin, vMax: b.vMax,
+      polygon: polygon, mesh: mesh
+    };
   }
 
   function onPointerDown(e) {
@@ -3817,6 +4006,40 @@
       startTheta = theta; startPhi = phi;
       renderer.domElement.setPointerCapture(e.pointerId);
     } else if (tool === "line") {
+      if (faceLineDrawing) {
+        var flHit = pickPointOnPlane(e, faceLineDrawing.plane);
+        if (!flHit) return;
+        var flLastUV = faceLineDrawing.points[faceLineDrawing.points.length - 1];
+        var flOrigin3 = faceUVToWorld(faceLineDrawing.axis, flLastUV.u, flLastUV.v, faceLineDrawing.faceOffset);
+        var flEff = computeEffectivePoint(flOrigin3, flHit, { allowAxis: false, allowLengthMatch: false });
+        flEff = faceLineDrawing.plane.projectPoint(flEff, new THREE.Vector3());
+        var flFirstUV = faceLineDrawing.points[0];
+        var flFirst3 = faceUVToWorld(faceLineDrawing.axis, flFirstUV.u, flFirstUV.v, faceLineDrawing.faceOffset);
+        if (faceLineDrawing.points.length >= 3 && flFirst3.distanceTo(flEff) < 0.35) {
+          finalizeFaceLineDrawing();
+        } else {
+          var flEffUV = faceUV(faceLineDrawing.axis, flEff);
+          faceLineDrawing.points.push(flEffUV);
+          updateFaceLinePreview(flEffUV);
+        }
+        return;
+      }
+      if (!lineDrawing) {
+        var faceHitL = volumeHit(e);
+        var faL = faceHitL ? faceAxisFromNormal(faceHitL.face.normal) : null;
+        if (faceHitL && faL && !isLocked(volumeOf(faceHitL.object))) {
+          var axisL = faL.axis, signL = faL.sign;
+          var faceOffsetL = axisL === "x" ? faceHitL.point.x : axisL === "y" ? faceHitL.point.y : faceHitL.point.z;
+          var normalVecL = new THREE.Vector3(axisL === "x" ? signL : 0, axisL === "y" ? signL : 0, axisL === "z" ? signL : 0);
+          var planeL = new THREE.Plane().setFromNormalAndCoplanarPoint(normalVecL, faceHitL.point);
+          var uv0L = faceUV(axisL, faceHitL.point);
+          var lineObjL = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
+          scene.add(lineObjL);
+          faceLineDrawing = { targetVol: volumeOf(faceHitL.object), axis: axisL, sign: signL, faceOffset: faceOffsetL, plane: planeL, points: [uv0L], line: lineObjL };
+          updateFaceLinePreview(uv0L);
+          return;
+        }
+      }
       var lpRaw = groundHit(e);
       if (!lpRaw) return;
       var lpOrigin = lineDrawing ? lineDrawing.points[lineDrawing.points.length - 1] : null;
@@ -3836,6 +4059,22 @@
         }
       }
     } else if (tool === "circle") {
+      var faceHitC = volumeHit(e);
+      var faC = faceHitC ? faceAxisFromNormal(faceHitC.face.normal) : null;
+      if (faceHitC && faC && !isLocked(volumeOf(faceHitC.object))) {
+        var axisC = faC.axis, signC = faC.sign;
+        var faceOffsetC2 = axisC === "x" ? faceHitC.point.x : axisC === "y" ? faceHitC.point.y : faceHitC.point.z;
+        var normalVecC2 = new THREE.Vector3(axisC === "x" ? signC : 0, axisC === "y" ? signC : 0, axisC === "z" ? signC : 0);
+        var planeC2 = new THREE.Plane().setFromNormalAndCoplanarPoint(normalVecC2, faceHitC.point);
+        var uv0C = faceUV(axisC, faceHitC.point);
+        var initGeo = extrudePolygonOnFace(axisC, circlePointsUV(uv0C.u, uv0C.v, 0.02, 40), Math.min(faceOffsetC2, faceOffsetC2 + signC * 0.02), Math.max(faceOffsetC2, faceOffsetC2 + signC * 0.02));
+        var initMat = new THREE.MeshBasicMaterial({ color: 0xc1601f, transparent: true, opacity: 0.4, depthTest: false, side: THREE.DoubleSide });
+        var initMesh = new THREE.Mesh(initGeo, initMat);
+        scene.add(initMesh);
+        faceCircleDrawing = { targetVol: volumeOf(faceHitC.object), axis: axisC, sign: signC, faceOffset: faceOffsetC2, plane: planeC2, center: uv0C, mesh: initMesh, radius: 0.02 };
+        renderer.domElement.setPointerCapture(e.pointerId);
+        return;
+      }
       var cp = groundHit(e);
       if (!cp) return;
       var cmesh = new THREE.Mesh(unitCircleGeo, previewMat);
@@ -3905,6 +4144,28 @@
         phi = startPhi - dy * 0.008;
       }
       updateCamera();
+      return;
+    }
+
+    if (faceLineDrawing) {
+      var flmHit = pickPointOnPlane(e, faceLineDrawing.plane);
+      if (flmHit) {
+        var flmLastUV = faceLineDrawing.points[faceLineDrawing.points.length - 1];
+        var flmOrigin3 = faceUVToWorld(faceLineDrawing.axis, flmLastUV.u, flmLastUV.v, faceLineDrawing.faceOffset);
+        var flmEff = computeEffectivePoint(flmOrigin3, flmHit, { allowAxis: false, allowLengthMatch: false });
+        flmEff = faceLineDrawing.plane.projectPoint(flmEff, new THREE.Vector3());
+        updateFaceLinePreview(faceUV(faceLineDrawing.axis, flmEff));
+      }
+      return;
+    }
+
+    if (faceCircleDrawing) {
+      var fcmHit = pickPointOnPlane(e, faceCircleDrawing.plane);
+      if (fcmHit) {
+        var fcmUV = faceUV(faceCircleDrawing.axis, fcmHit);
+        var du = fcmUV.u - faceCircleDrawing.center.u, dv = fcmUV.v - faceCircleDrawing.center.v;
+        updateFaceCirclePreview(Math.max(Math.hypot(du, dv), 0.02));
+      }
       return;
     }
 
@@ -4062,9 +4323,15 @@
         var nAs = pendingSketch.faceOffset, nBs = pendingSketch.faceOffset + pendingSketch.sign * depth;
         var nMinS = Math.min(nAs, nBs), nMaxS = Math.max(nAs, nBs);
         if (nMaxS - nMinS < 0.02) nMaxS = nMinS + 0.02;
-        var bs = boundsFromFace(pendingSketch.axis, pendingSketch.uMin, pendingSketch.uMax, pendingSketch.vMin, pendingSketch.vMax, nMinS, nMaxS);
-        pendingSketch.mesh.scale.set(Math.max(bs.max.x - bs.min.x, 0.002), Math.max(bs.max.y - bs.min.y, 0.002), Math.max(bs.max.z - bs.min.z, 0.002));
-        pendingSketch.mesh.position.set((bs.min.x + bs.max.x) / 2, (bs.min.y + bs.max.y) / 2, (bs.min.z + bs.max.z) / 2);
+        if (pendingSketch.polygon) {
+          var pgeo = extrudePolygonOnFace(pendingSketch.axis, pendingSketch.polygon, nMinS, nMaxS);
+          pendingSketch.mesh.geometry.dispose();
+          pendingSketch.mesh.geometry = pgeo;
+        } else {
+          var bs = boundsFromFace(pendingSketch.axis, pendingSketch.uMin, pendingSketch.uMax, pendingSketch.vMin, pendingSketch.vMax, nMinS, nMaxS);
+          pendingSketch.mesh.scale.set(Math.max(bs.max.x - bs.min.x, 0.002), Math.max(bs.max.y - bs.min.y, 0.002), Math.max(bs.max.z - bs.min.z, 0.002));
+          pendingSketch.mesh.position.set((bs.min.x + bs.max.x) / 2, (bs.min.y + bs.max.y) / 2, (bs.min.z + bs.max.z) / 2);
+        }
         pendingSketch.mesh.material.color.set(depth < 0 ? 0xc23b3b : 0x3ba05c);
         showDims(pendingSketch.uMax - pendingSketch.uMin, pendingSketch.vMax - pendingSketch.vMin, Math.abs(depth));
       }
@@ -4109,6 +4376,11 @@
     if (orbiting || panning) {
       orbiting = false; panning = false;
       stageEl.classList.remove("dragging");
+    }
+    if (faceCircleDrawing) {
+      finalizeFaceCircleDrawing();
+      try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
+      return;
     }
     if (circleDrawing) {
       var cr = circleDrawing.radius || 0;
@@ -4217,8 +4489,14 @@
         hideDims();
       } else {
         var nA2 = pendingSketch.faceOffset, nB2 = pendingSketch.faceOffset + pendingSketch.sign * depthFinal;
-        var b2 = boundsFromFace(pendingSketch.axis, pendingSketch.uMin, pendingSketch.uMax, pendingSketch.vMin, pendingSketch.vMax, Math.min(nA2, nB2), Math.max(nA2, nB2));
-        var opMesh = makeBoxMesh(b2.min, b2.max, null);
+        var nMin2 = Math.min(nA2, nB2), nMax2 = Math.max(nA2, nB2);
+        var opMesh;
+        if (pendingSketch.polygon) {
+          opMesh = new THREE.Mesh(extrudePolygonOnFace(pendingSketch.axis, pendingSketch.polygon, nMin2, nMax2));
+        } else {
+          var b2 = boundsFromFace(pendingSketch.axis, pendingSketch.uMin, pendingSketch.uMax, pendingSketch.vMin, pendingSketch.vMax, nMin2, nMax2);
+          opMesh = makeBoxMesh(b2.min, b2.max, null);
+        }
         var targetVol = pendingSketch.targetVol;
         snapshot();
         var targetCSG = CSG.fromPolygons(meshToCSGPolygons(targetVol.mesh));
