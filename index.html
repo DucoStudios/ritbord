@@ -324,6 +324,36 @@
     margin-right: 2px;
   }
 
+  .inference-label {
+    position: fixed;
+    bottom: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    padding: 5px 12px;
+    border-radius: 999px;
+    box-shadow: 0 8px 24px var(--shadow);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--ink);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    pointer-events: none;
+  }
+  .inference-label.visible { opacity: 1; }
+  .inference-label .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+
   .swatch-rail {
     position: fixed;
     top: 50%;
@@ -807,6 +837,8 @@
     <span><span class="dim-label">H</span><span id="dimH">0.0</span> m</span>
   </div>
 
+  <div class="inference-label" id="inferenceLabel"><span class="dot" id="inferenceLabelDot"></span><span id="inferenceLabelText"></span></div>
+
   <div class="scale-bar" id="scaleBar">
     <div class="bar" id="scaleBarLine"></div>
     <span class="label" id="scaleBarLabel">1 m</span>
@@ -1274,6 +1306,216 @@
       });
     });
     return best;
+  }
+
+  // ---- Inference engine: axis guides + point/length snapping (SketchUp-style) ----
+  // Ground-plane (X/Z) only in this stage. Vertical (Y) and face-local (u,v)
+  // inference land in a later stage once drawing-on-arbitrary-faces exists;
+  // push/pull/scale don't need it since they're already single-axis by
+  // construction (see pickFace).
+  var AXIS_SNAP_ANGLE = 8 * Math.PI / 180; // degrees of drag-direction tolerance to call it "on axis"
+  var POINT_SNAP_DIST = 0.12;              // world units, matches SNAP_DIST's guide-snap tolerance
+  var LENGTH_SNAP_REL = 0.015;             // 1.5% relative tolerance
+  var LENGTH_SNAP_MIN = 0.02;              // floor so tiny edges don't get a huge absolute tolerance
+
+  var inferenceRuntime = { shiftHeld: false, forcedAxis: null }; // forcedAxis: 'x' | 'z' | null
+  var inferenceLabelEl = document.getElementById("inferenceLabel");
+  var inferenceLabelTextEl = document.getElementById("inferenceLabelText");
+  var inferenceLabelDotEl = document.getElementById("inferenceLabelDot");
+
+  var AXIS_COLOR = { x: 0xd83a3a, z: 0x3aa15c }; // red = X, green = Z (Blue/Y reserved for vertical, later stage)
+  var inferenceGroup = new THREE.Group();
+  scene.add(inferenceGroup);
+  var axisGuideDashedMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.28, gapSize: 0.16, transparent: true, opacity: 0.85, depthTest: false });
+  var axisGuideSolidMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false });
+  var axisGuideLine = new THREE.Line(new THREE.BufferGeometry(), axisGuideDashedMat);
+  axisGuideLine.visible = false;
+  inferenceGroup.add(axisGuideLine);
+  var snapDotGeo = new THREE.SphereGeometry(0.045, 12, 8);
+  var snapDotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95 });
+  var snapDotMesh = new THREE.Mesh(snapDotGeo, snapDotMat);
+  snapDotMesh.visible = false;
+  snapDotMesh.renderOrder = 999;
+  inferenceGroup.add(snapDotMesh);
+
+  var POINT_SNAP_COLOR = { endpoint: 0x2fbf5a, midpoint: 0x2fa7e0, length: 0xd8973a };
+
+  // Every plain-box's 12 edges (derived from scale/position, no BufferGeometry
+  // walk needed since boxes are always axis-aligned) plus, for compounds,
+  // the unique edges of their baked triangle soup. Recomputed on demand
+  // (called once per pointerdown/drag-start, not per pointermove) since a
+  // per-frame full-scene scan would be wasteful.
+  function getSceneEdgeSamples(excludeVol) {
+    var edges = [];
+    volumes.forEach(function (v) {
+      if (v === excludeVol || !layerOf(v).visible) return;
+      if (!v.isCompound) {
+        var bb = new THREE.Box3().setFromObject(v.mesh);
+        var corners = [];
+        [bb.min.x, bb.max.x].forEach(function (x) {
+          [bb.min.y, bb.max.y].forEach(function (y) {
+            [bb.min.z, bb.max.z].forEach(function (z) { corners.push(new THREE.Vector3(x, y, z)); });
+          });
+        });
+        // 12 edges of a box, indices into the 8-corner cube built above (x,y,z bit order)
+        var pairs = [[0,1],[2,3],[4,5],[6,7], [0,2],[1,3],[4,6],[5,7], [0,4],[1,5],[2,6],[3,7]];
+        pairs.forEach(function (p) { edges.push({ a: corners[p[0]], b: corners[p[1]] }); });
+      } else {
+        var pos = v.mesh.geometry.attributes.position;
+        var seen = {};
+        for (var i = 0; i < pos.count; i += 3) {
+          var tri = [
+            new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)),
+            new THREE.Vector3(pos.getX(i + 1), pos.getY(i + 1), pos.getZ(i + 1)),
+            new THREE.Vector3(pos.getX(i + 2), pos.getY(i + 2), pos.getZ(i + 2))
+          ];
+          for (var k = 0; k < 3; k++) {
+            var a = tri[k], b = tri[(k + 1) % 3];
+            var key = [a.x.toFixed(3), a.y.toFixed(3), a.z.toFixed(3), b.x.toFixed(3), b.y.toFixed(3), b.z.toFixed(3)].sort().join("|");
+            if (seen[key]) continue;
+            seen[key] = true;
+            edges.push({ a: a, b: b });
+          }
+        }
+      }
+    });
+    edges.forEach(function (e) { e.length = e.a.distanceTo(e.b); });
+    return edges;
+  }
+
+  // Endpoint/midpoint snap against a cached edge list. Returns
+  // {point, type:'endpoint'|'midpoint', ref} or null.
+  function findPointSnap(rawPoint, edgeSamples) {
+    var best = null, bestDist = POINT_SNAP_DIST;
+    edgeSamples.forEach(function (e) {
+      [{ p: e.a, type: "endpoint" }, { p: e.b, type: "endpoint" }, { p: e.a.clone().lerp(e.b, 0.5), type: "midpoint" }].forEach(function (cand) {
+        var d = rawPoint.distanceTo(cand.p);
+        if (d < bestDist) { bestDist = d; best = { point: cand.p, type: cand.type, ref: e }; }
+      });
+    });
+    return best;
+  }
+
+  // Ground-plane axis inference: does the drag from origin->rawPoint point
+  // (within AXIS_SNAP_ANGLE) mostly along world X or world Z? Shift latches
+  // whichever was last shown; arrow keys force one regardless of direction.
+  function findAxisInference(origin, rawPoint) {
+    if (inferenceRuntime.forcedAxis) return { axis: inferenceRuntime.forcedAxis, locked: true };
+    var dx = rawPoint.x - origin.x, dz = rawPoint.z - origin.z;
+    var dist = Math.hypot(dx, dz);
+    if (dist < 0.03) return inferenceRuntime.shiftHeld && inferenceRuntime.lastAxis ? { axis: inferenceRuntime.lastAxis, locked: true } : null;
+    var angleFromX = Math.abs(Math.atan2(dz, dx));
+    var angleFromXAxis = Math.min(angleFromX, Math.PI - angleFromX);
+    var angleFromZAxis = Math.abs(Math.PI / 2 - angleFromX);
+    var axis = null;
+    if (angleFromXAxis < AXIS_SNAP_ANGLE) axis = "x";
+    else if (angleFromZAxis < AXIS_SNAP_ANGLE) axis = "z";
+    if (inferenceRuntime.shiftHeld) {
+      if (axis) inferenceRuntime.lastAxis = axis;
+      return inferenceRuntime.lastAxis ? { axis: inferenceRuntime.lastAxis, locked: true } : null;
+    }
+    inferenceRuntime.lastAxis = axis;
+    return axis ? { axis: axis, locked: false } : null;
+  }
+
+  // Snap a live drag distance to match an existing edge's length exactly,
+  // if within tolerance. Direction is preserved (only distance changes).
+  function findLengthMatchSnap(origin, rawPoint, edgeSamples) {
+    var dragLen = origin.distanceTo(rawPoint);
+    if (dragLen < 0.05) return null;
+    var best = null, bestDelta = Infinity;
+    edgeSamples.forEach(function (e) {
+      var tol = Math.max(LENGTH_SNAP_MIN, e.length * LENGTH_SNAP_REL);
+      var delta = Math.abs(e.length - dragLen);
+      if (delta < tol && delta < bestDelta) { bestDelta = delta; best = e; }
+    });
+    if (!best) return null;
+    var dir = rawPoint.clone().sub(origin).setY(0);
+    if (dir.lengthSq() < 1e-6) return null;
+    dir.normalize().multiplyScalar(best.length);
+    return { point: origin.clone().add(dir), length: best.length, ref: best };
+  }
+
+  function hideInferenceOverlay() {
+    axisGuideLine.visible = false;
+    snapDotMesh.visible = false;
+    inferenceLabelEl.classList.remove("visible");
+    inferenceRuntime.forcedAxis = null;
+    inferenceRuntime.lastAxis = null;
+  }
+
+  function showInferenceLabel(text, colorHex) {
+    inferenceLabelTextEl.textContent = text;
+    inferenceLabelDotEl.style.background = "#" + colorHex.toString(16).padStart(6, "0");
+    inferenceLabelEl.classList.add("visible");
+  }
+
+  function renderAxisGuide(origin, axisInfo) {
+    var dir = axisInfo.axis === "x" ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+    var a = origin.clone().addScaledVector(dir, -200);
+    var b = origin.clone().addScaledVector(dir, 200);
+    a.y = b.y = origin.y + 0.01;
+    setLinePositions(axisGuideLine, [a, b], origin.y + 0.01);
+    var mat = axisInfo.locked ? axisGuideSolidMat : axisGuideDashedMat;
+    mat.color.setHex(AXIS_COLOR[axisInfo.axis]);
+    axisGuideLine.material = mat;
+    if (mat === axisGuideDashedMat) axisGuideLine.computeLineDistances();
+    axisGuideLine.visible = true;
+  }
+
+  // Main entry point: tools call this each pointermove with the origin point
+  // of the current drag (null if just hovering/starting) and the raw
+  // ground-plane hit point. Returns the effective (possibly snapped) point;
+  // also updates the on-screen overlay as a side effect.
+  function computeEffectivePoint(origin, rawPoint, opts) {
+    opts = opts || {};
+    var edgeSamples = opts.edgeSamples || getSceneEdgeSamples(opts.excludeVol);
+    var effective = rawPoint.clone();
+    var labelShown = false, dotShown = false;
+
+    if (origin && opts.allowLengthMatch !== false) {
+      var lenSnap = findLengthMatchSnap(origin, rawPoint, edgeSamples);
+      if (lenSnap) {
+        effective.copy(lenSnap.point);
+        snapDotMesh.position.copy(effective).setY(effective.y + 0.02);
+        snapDotMesh.material.color.setHex(POINT_SNAP_COLOR.length);
+        dotShown = true;
+        showInferenceLabel("= " + lenSnap.length.toFixed(2) + " m (samma längd som en annan kant)", POINT_SNAP_COLOR.length);
+        labelShown = true;
+      }
+    }
+
+    if (!dotShown && opts.allowPointSnap !== false) {
+      var ptSnap = findPointSnap(rawPoint, edgeSamples);
+      if (ptSnap) {
+        effective.copy(ptSnap.point);
+        snapDotMesh.position.copy(effective).setY(effective.y + 0.02);
+        snapDotMesh.material.color.setHex(POINT_SNAP_COLOR[ptSnap.type]);
+        dotShown = true;
+        showInferenceLabel(ptSnap.type === "endpoint" ? "Ändpunkt" : "Mittpunkt", POINT_SNAP_COLOR[ptSnap.type]);
+        labelShown = true;
+      }
+    }
+    snapDotMesh.visible = dotShown;
+
+    if (origin && opts.allowAxis !== false) {
+      var axisInfo = findAxisInference(origin, effective);
+      if (axisInfo) {
+        if (axisInfo.axis === "x") effective.z = origin.z; else effective.x = origin.x;
+        renderAxisGuide(origin, axisInfo);
+        if (!labelShown) {
+          showInferenceLabel((axisInfo.locked ? "Låst på " : "På ") + (axisInfo.axis === "x" ? "röd axel" : "grön axel"), AXIS_COLOR[axisInfo.axis]);
+          labelShown = true;
+        }
+      } else {
+        axisGuideLine.visible = false;
+      }
+    } else {
+      axisGuideLine.visible = false;
+    }
+
+    if (!labelShown) inferenceLabelEl.classList.remove("visible");
+    return effective;
   }
 
   function applyTheme() {
@@ -2026,6 +2268,7 @@
     if (next !== "arc") cancelArcDrawing();
     if (next !== "tape") cancelTapeDrawing();
     if (next !== "place-prop") armedProp = null;
+    hideInferenceOverlay();
     tool = next;
     stageEl.className = "tool-" + tool;
     toolButtons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tool === tool ? "true" : "false"); });
@@ -2205,6 +2448,13 @@
     // never be hijacked by single-letter tool/action shortcuts
     var activeTag = document.activeElement && document.activeElement.tagName;
     if (activeTag === "INPUT" || activeTag === "TEXTAREA" || (document.activeElement && document.activeElement.isContentEditable)) return;
+    if (e.key === "Shift") { inferenceRuntime.shiftHeld = true; return; }
+    var inferenceSessionActive = !!(lineDrawing || drawing || moving);
+    if (inferenceSessionActive && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      inferenceRuntime.forcedAxis = (e.key === "ArrowLeft" || e.key === "ArrowRight") ? "x" : "z";
+      return;
+    }
     if (e.metaKey || e.ctrlKey) {
       if (e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
       else if (e.key.toLowerCase() === "s") { e.preventDefault(); saveToFile(); }
@@ -2232,6 +2482,11 @@
     else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
+  });
+
+  window.addEventListener("keyup", function (e) {
+    if (e.key === "Shift") inferenceRuntime.shiftHeld = false;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") inferenceRuntime.forcedAxis = null;
   });
 
   setTool("rectangle");
@@ -2326,6 +2581,7 @@
     lineDrawing.line.geometry.dispose();
     lineDrawing = null;
     hideDims();
+    hideInferenceOverlay();
   }
 
   function updateLinePreview(cursor) {
@@ -2396,12 +2652,13 @@
     if (roofing) { discardRoofPreview(); roofing = null; }
     if (faceDrawing) { scene.remove(faceDrawing.mesh); faceDrawing.mesh.material.dispose(); faceDrawing = null; }
     if (sketchPull) { sketchPull = null; }
-    if (moving) { moving = null; }
+    if (moving) { moving = null; hideInferenceOverlay(); }
     if (movingProp) { movingProp = null; }
     paintDragActive = false;
     orbiting = false; panning = false;
     stageEl.classList.remove("dragging");
     hideDims();
+    hideInferenceOverlay();
   }
 
   function touchDistance() {
@@ -3162,8 +3419,9 @@
         setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
         return;
       }
-      var p = groundHit(e);
-      if (!p) return;
+      var pRaw = groundHit(e);
+      if (!pRaw) return;
+      var p = computeEffectivePoint(null, pRaw, {});
       var vol = makeVolume(p.x, p.z, 0.02, 0.02, 0.02, activeSwatch);
       drawing = { startX: p.x, startZ: p.z, vol: vol };
       renderer.domElement.setPointerCapture(e.pointerId);
@@ -3355,8 +3613,10 @@
       startTheta = theta; startPhi = phi;
       renderer.domElement.setPointerCapture(e.pointerId);
     } else if (tool === "line") {
-      var lp = groundHit(e);
-      if (!lp) return;
+      var lpRaw = groundHit(e);
+      if (!lpRaw) return;
+      var lpOrigin = lineDrawing ? lineDrawing.points[lineDrawing.points.length - 1] : null;
+      var lp = computeEffectivePoint(lpOrigin, lpRaw, {});
       if (!lineDrawing) {
         var lineObj = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
         scene.add(lineObj);
@@ -3445,8 +3705,12 @@
     }
 
     if (lineDrawing) {
-      var lmp = groundHit(e);
-      if (lmp) updateLinePreview(lmp);
+      var lmpRaw = groundHit(e);
+      if (lmpRaw) {
+        var lmpOrigin = lineDrawing.points[lineDrawing.points.length - 1];
+        var lmp = computeEffectivePoint(lmpOrigin, lmpRaw, {});
+        updateLinePreview(lmp);
+      }
       return;
     }
 
@@ -3493,8 +3757,12 @@
     }
 
     if (drawing) {
-      var p = groundHit(e);
-      if (!p) return;
+      var pRaw2 = groundHit(e);
+      if (!pRaw2) return;
+      // a rectangle's far corner is a free 2D drag (both dimensions vary
+      // independently), so no axis-lock/length-match here -- only point-snap
+      // the opposite corner onto an existing endpoint/midpoint if close.
+      var p = computeEffectivePoint(null, pRaw2, { allowAxis: false, allowLengthMatch: false, excludeVol: drawing.vol });
       var minX = Math.min(drawing.startX, p.x), maxX = Math.max(drawing.startX, p.x);
       var minZ = Math.min(drawing.startZ, p.z), maxZ = Math.max(drawing.startZ, p.z);
       var w = Math.max(maxX - minX, 0.02), d = Math.max(maxZ - minZ, 0.02);
@@ -3600,8 +3868,12 @@
     }
 
     if (moving) {
-      var gp2 = groundHit(e);
-      if (!gp2) return;
+      var gp2Raw = groundHit(e);
+      if (!gp2Raw) return;
+      // moving a whole selection: only axis-lock is meaningful here (nudge
+      // strictly along X or Z), point/length snap would need to reason about
+      // the moved object's own corners rather than the cursor's pick point.
+      var gp2 = computeEffectivePoint(moving.startPoint, gp2Raw, { allowPointSnap: false, allowLengthMatch: false });
       var dx2 = gp2.x - moving.startPoint.x, dz2 = gp2.z - moving.startPoint.z;
       moving.items.forEach(function (it) {
         it.vol.mesh.position.x = it.x0 + dx2;
@@ -3669,6 +3941,7 @@
         setTool("pushpull");
       }
       drawing = null;
+      hideInferenceOverlay();
     }
     if (pulling) { pulling = null; hideOutline(); }
     if (scaling) {
@@ -3763,7 +4036,7 @@
       sketchPull = null;
     }
 
-    if (moving) { moving = null; }
+    if (moving) { moving = null; hideInferenceOverlay(); }
     if (movingProp) { movingProp = null; persistState(); }
     if (paintDragActive) { paintDragActive = false; }
     try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
