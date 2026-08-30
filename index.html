@@ -753,6 +753,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4" stroke-dasharray="2.2 2.2"/><circle cx="4" cy="20" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="currentColor" stroke="none"/></svg>
       <span class="btn-label">Tape</span>
     </button>
+    <button class="tool-btn" data-tool="offset" aria-pressed="false" title="Offset: click a face, drag inward for a parallel inset panel you can push/pull separately (F)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="1"/><rect x="8" y="8" width="8" height="8" rx="0.5" stroke-dasharray="2 2"/></svg>
+      <span class="btn-label">Offset</span>
+    </button>
     <button class="tool-btn" data-action="clearguides" title="Remove all guide lines">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5" stroke-dasharray="2 2"/><path d="M4 7l3-3 13 13-3 3z"/></svg>
       <span class="btn-label">Clear guides</span>
@@ -2257,7 +2261,8 @@
     circle: "Drag from the center to set the radius",
     arc: "Click the center, click the start point, then click to set the sweep",
     tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
-    "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove."
+    "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
+    offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel"
   };
 
   function setTool(next) {
@@ -2267,6 +2272,7 @@
     if (next !== "circle") cancelCircleDrawing();
     if (next !== "arc") cancelArcDrawing();
     if (next !== "tape") cancelTapeDrawing();
+    if (next !== "offset") cancelOffsetDrawing();
     if (next !== "place-prop") armedProp = null;
     hideInferenceOverlay();
     tool = next;
@@ -2474,12 +2480,13 @@
     else if (e.key.toLowerCase() === "r") setTool("rotate");
     else if (e.key.toLowerCase() === "h") setTool("pan");
     else if (e.key.toLowerCase() === "g") setTool("roof");
+    else if (e.key.toLowerCase() === "f") setTool("offset");
     else if (e.key.toLowerCase() === "s") subtractSelected();
     else if (e.key.toLowerCase() === "c") chamferSelected();
     else if (e.key.toLowerCase() === "u") groupSelected();
     else if (e.key.toLowerCase() === "k") toggleLockSelectedGroup();
     else if (e.key.toLowerCase() === "t") toggleToolbar();
-    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); }
+    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if (e.key === "Enter" && faceLineDrawing && faceLineDrawing.points.length >= 3) finalizeFaceLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
@@ -2543,6 +2550,7 @@
   var faceLineDrawing = null;  // { targetVol, axis, sign, faceOffset, plane, points: [{u,v}], line }
   var circleDrawing = null; // { center, mesh, radius }
   var faceCircleDrawing = null; // { targetVol, axis, sign, faceOffset, plane, center: {u,v}, radius, mesh }
+  var offsetDrawing = null; // { targetVol, axis, sign, faceOffset, plane, footprint: {uMin,uMax,vMin,vMax}, mesh, distance }
   var arcDrawing = null;    // { phase: 'radius'|'sweep', center, radius, startAngle, sweepAccum, lastRawAngle, mesh, radiusLine }
   var tapeDrawing = null;   // { origin, line }
 
@@ -2625,6 +2633,7 @@
     if (polygon.length < 3) return;
     clearPendingSketch();
     startPendingSketchFromPolygon(fd, polygon);
+    setTool("pushpull");
   }
 
   function updateLinePreview(cursor) {
@@ -2683,6 +2692,67 @@
     faceCircleDrawing = null;
     clearPendingSketch();
     startPendingSketchFromPolygon(fd, polygon);
+    setTool("pushpull");
+  }
+
+  // ---- Offset: click a face, drag inward to inset its whole boundary by a
+  // uniform distance -- the SketchUp "Offset" tool. Produces a smaller parallel
+  // rectangle centered on the same face, handed off to the same sketch-on-face
+  // pendingSketch/push-pull pipeline as Line/Circle, so the inset panel can then
+  // be raised (boss) or recessed (frame/notch) independently of the rest of the
+  // face. Whole-face only (uses the face's outer footprint), not an arbitrary
+  // already-sketched sub-region -- matches how Rectangle/pushpull already treat
+  // "whole face" elsewhere in this file.
+  function insetPolygonFromFootprint(fp, distance) {
+    return [
+      { u: fp.uMin + distance, v: fp.vMin + distance },
+      { u: fp.uMax - distance, v: fp.vMin + distance },
+      { u: fp.uMax - distance, v: fp.vMax - distance },
+      { u: fp.uMin + distance, v: fp.vMax - distance }
+    ];
+  }
+
+  function cancelOffsetDrawing() {
+    if (!offsetDrawing) return;
+    if (offsetDrawing.mesh) {
+      scene.remove(offsetDrawing.mesh);
+      offsetDrawing.mesh.geometry.dispose();
+      offsetDrawing.mesh.material.dispose();
+    }
+    offsetDrawing = null;
+    hideDims();
+  }
+
+  function updateOffsetPreview(distance) {
+    var fp = offsetDrawing.footprint;
+    var maxDist = Math.min(fp.uMax - fp.uMin, fp.vMax - fp.vMin) / 2 - 0.02;
+    distance = Math.max(0.02, Math.min(distance, Math.max(maxDist, 0.02)));
+    offsetDrawing.distance = distance;
+    var polygon = insetPolygonFromFootprint(fp, distance);
+    var nA = offsetDrawing.faceOffset, nB = offsetDrawing.faceOffset + offsetDrawing.sign * 0.02;
+    var geo = extrudePolygonOnFace(offsetDrawing.axis, polygon, Math.min(nA, nB), Math.max(nA, nB));
+    if (offsetDrawing.mesh) {
+      offsetDrawing.mesh.geometry.dispose();
+      offsetDrawing.mesh.geometry = geo;
+    } else {
+      var mat = new THREE.MeshBasicMaterial({ color: 0xc1601f, transparent: true, opacity: 0.45, depthTest: false, side: THREE.DoubleSide });
+      offsetDrawing.mesh = new THREE.Mesh(geo, mat);
+      scene.add(offsetDrawing.mesh);
+    }
+    showDims(fp.uMax - fp.uMin - 2 * distance, fp.vMax - fp.vMin - 2 * distance, distance);
+  }
+
+  function finalizeOffsetDrawing() {
+    var fd = offsetDrawing;
+    if (!fd || fd.distance < 0.05) { cancelOffsetDrawing(); return; }
+    var polygon = insetPolygonFromFootprint(fd.footprint, fd.distance);
+    scene.remove(fd.mesh);
+    fd.mesh.geometry.dispose();
+    fd.mesh.material.dispose();
+    offsetDrawing = null;
+    clearPendingSketch();
+    startPendingSketchFromPolygon(fd, polygon);
+    setTool("pushpull");
   }
 
   function cancelArcDrawing() {
@@ -2727,6 +2797,7 @@
     if (rotating) { rotating = null; }
     if (roofing) { discardRoofPreview(); roofing = null; }
     if (faceDrawing) { scene.remove(faceDrawing.mesh); faceDrawing.mesh.material.dispose(); faceDrawing = null; }
+    if (offsetDrawing) { cancelOffsetDrawing(); }
     if (sketchPull) { sketchPull = null; }
     if (moving) { moving = null; hideInferenceOverlay(); }
     if (movingProp) { movingProp = null; }
@@ -4118,6 +4189,23 @@
       } else {
         finalizeTape(tp);
       }
+    } else if (tool === "offset") {
+      var faceHitO = volumeHit(e);
+      var faO = faceHitO ? faceAxisFromNormal(faceHitO.face.normal) : null;
+      if (!faceHitO || !faO) return;
+      var volO = volumeOf(faceHitO.object);
+      if (isLocked(volO)) {
+        setHint("The shape is locked (group or layer)");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
+      var axisO = faO.axis, signO = faO.sign;
+      var faceOffsetO = axisO === "x" ? faceHitO.point.x : axisO === "y" ? faceHitO.point.y : faceHitO.point.z;
+      var normalVecO = new THREE.Vector3(axisO === "x" ? signO : 0, axisO === "y" ? signO : 0, axisO === "z" ? signO : 0);
+      var planeO = new THREE.Plane().setFromNormalAndCoplanarPoint(normalVecO, faceHitO.point);
+      var footprintO = wholeFaceFootprint(volO.mesh, axisO, signO, faceOffsetO);
+      offsetDrawing = { targetVol: volO, axis: axisO, sign: signO, faceOffset: faceOffsetO, plane: planeO, footprint: footprintO, mesh: null, distance: 0 };
+      renderer.domElement.setPointerCapture(e.pointerId);
     } else if (tool === "place-prop" && armedProp) {
       var pp = propSurfaceHit(e);
       if (!pp) return;
@@ -4165,6 +4253,17 @@
         var fcmUV = faceUV(faceCircleDrawing.axis, fcmHit);
         var du = fcmUV.u - faceCircleDrawing.center.u, dv = fcmUV.v - faceCircleDrawing.center.v;
         updateFaceCirclePreview(Math.max(Math.hypot(du, dv), 0.02));
+      }
+      return;
+    }
+
+    if (offsetDrawing) {
+      var ofHit = pickPointOnPlane(e, offsetDrawing.plane);
+      if (ofHit) {
+        var ofUV = faceUV(offsetDrawing.axis, ofHit);
+        var fp = offsetDrawing.footprint;
+        var dist = Math.min(ofUV.u - fp.uMin, fp.uMax - ofUV.u, ofUV.v - fp.vMin, fp.vMax - ofUV.v);
+        updateOffsetPreview(dist);
       }
       return;
     }
@@ -4379,6 +4478,11 @@
     }
     if (faceCircleDrawing) {
       finalizeFaceCircleDrawing();
+      try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
+      return;
+    }
+    if (offsetDrawing) {
+      finalizeOffsetDrawing();
       try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
       return;
     }
