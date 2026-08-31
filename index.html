@@ -354,6 +354,49 @@
     flex: none;
   }
 
+  .vcb-box {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel);
+    border: 1.5px solid var(--accent, #c1601f);
+    padding: 6px 14px;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px var(--shadow);
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--ink);
+    z-index: 11;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    pointer-events: none;
+  }
+  .vcb-box.visible { opacity: 1; }
+  .vcb-box .vcb-hint {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--steel);
+  }
+  .vcb-box .vcb-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent, #c1601f);
+    margin-left: 1px;
+    animation: vcbBlink 1s step-end infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes vcbBlink { 50% { opacity: 0; } }
+
   .swatch-rail {
     position: fixed;
     top: 50%;
@@ -843,6 +886,8 @@
 
   <div class="inference-label" id="inferenceLabel"><span class="dot" id="inferenceLabelDot"></span><span id="inferenceLabelText"></span></div>
 
+  <div class="vcb-box" id="vcbBox"><span class="vcb-hint" id="vcbHint">Mått</span><span id="vcbText"></span><span class="vcb-caret"></span></div>
+
   <div class="scale-bar" id="scaleBar">
     <div class="bar" id="scaleBarLine"></div>
     <span class="label" id="scaleBarLabel">1 m</span>
@@ -952,6 +997,9 @@
   var dimWEl = document.getElementById("dimW");
   var dimDEl = document.getElementById("dimD");
   var dimHEl = document.getElementById("dimH");
+  var vcbBoxEl = document.getElementById("vcbBox");
+  var vcbHintEl = document.getElementById("vcbHint");
+  var vcbTextEl = document.getElementById("vcbText");
   var swatchRailEl = document.getElementById("swatchRail");
   var toolbarEl = document.querySelector(".toolbar");
   var toolbarCollapseBtnEl = document.getElementById("toolbarCollapseBtn");
@@ -2266,6 +2314,93 @@
   }
   function hideDims() { hudEl.classList.remove("visible"); }
 
+  // ---- VCB (Value Control Box): SketchUp-style precise numeric entry. While
+  // a supported draw session is live, digits/separators/unit letters are
+  // captured into vcbBuffer instead of triggering tool shortcuts; Enter
+  // parses and applies the typed value(s), overriding whatever the mouse
+  // implied, and finalizes the shape as if released there. "," is a decimal
+  // separator (Swedish convention), "x" separates a width/depth pair, and a
+  // trailing mm/cm/m unit (applied to the whole typed value) converts to the
+  // app's internal meters -- e.g. "4500x3000mm" -> 4.5 x 3.0 m, "250mm" -> 0.25 m.
+  var vcbBuffer = "";
+  var vcbActive = false;
+
+  function vcbSupportedSession() {
+    return !!(drawing || pulling || lineDrawing || faceLineDrawing);
+  }
+
+  function vcbHintFor() {
+    if (drawing) return "Mått, BxD";
+    if (pulling) return pulling.axis === "y" ? "Höjd" : "Längd";
+    if (lineDrawing || faceLineDrawing) return "Längd";
+    return "Mått";
+  }
+
+  function updateVcbDisplay() {
+    if (!vcbActive) { vcbBoxEl.classList.remove("visible"); return; }
+    vcbHintEl.textContent = vcbHintFor();
+    vcbTextEl.textContent = vcbBuffer;
+    vcbBoxEl.classList.add("visible");
+  }
+
+  function cancelVcb() {
+    vcbActive = false;
+    vcbBuffer = "";
+    updateVcbDisplay();
+  }
+
+  function extractUnitAndBody(raw) {
+    var s = raw.trim().toLowerCase();
+    var unit = "m";
+    var m = /(mm|cm|m)$/.exec(s);
+    if (m) { unit = m[1]; s = s.slice(0, s.length - m[1].length); }
+    return { unit: unit, body: s };
+  }
+  function unitToMeters(n, unit) {
+    if (unit === "mm") return n / 1000;
+    if (unit === "cm") return n / 100;
+    return n;
+  }
+  function parseVcbSingle(raw) {
+    var eu = extractUnitAndBody(raw);
+    var n = parseFloat(eu.body.replace(",", "."));
+    if (!isFinite(n)) return null;
+    return unitToMeters(n, eu.unit);
+  }
+  function parseVcbPair(raw) {
+    var eu = extractUnitAndBody(raw);
+    var parts = eu.body.split(/x/i);
+    var w = parseFloat(parts[0].replace(",", "."));
+    var d = parts.length > 1 ? parseFloat(parts[1].replace(",", ".")) : w;
+    if (!isFinite(w) || !isFinite(d)) return null;
+    return { w: unitToMeters(w, eu.unit), d: unitToMeters(d, eu.unit) };
+  }
+
+  function applyVcbCommit() {
+    var buf = vcbBuffer;
+    cancelVcb();
+    if (!buf) return;
+    if (drawing) {
+      var pair = parseVcbPair(buf);
+      if (!pair || pair.w <= 0 || pair.d <= 0) return;
+      applyRectangleExact(pair.w, pair.d);
+      finalizeDrawingSession();
+    } else if (pulling) {
+      var val = parseVcbSingle(buf);
+      if (val === null || val <= 0) return;
+      applyPushPullExact(val);
+      pulling = null;
+      hideOutline();
+      persistState();
+    } else if (lineDrawing) {
+      var len = parseVcbSingle(buf);
+      if (len !== null && len > 0) applyGroundLineSegmentExact(len);
+    } else if (faceLineDrawing) {
+      var flen = parseVcbSingle(buf);
+      if (flen !== null && flen > 0) applyFaceLineSegmentExact(flen);
+    }
+  }
+
   function setHint(text) {
     hintEl.textContent = text;
     hintEl.style.opacity = text ? "1" : "0";
@@ -2294,6 +2429,7 @@
   };
 
   function setTool(next) {
+    if (vcbActive) cancelVcb();
     if (next !== "select") hideFaceHighlight();
     if (next !== "pushpull") clearPendingSketch();
     if (next !== "line") cancelLineDrawing();
@@ -2483,6 +2619,34 @@
     var activeTag = document.activeElement && document.activeElement.tagName;
     if (activeTag === "INPUT" || activeTag === "TEXTAREA" || (document.activeElement && document.activeElement.isContentEditable)) return;
     if (e.key === "Shift") { inferenceRuntime.shiftHeld = true; return; }
+
+    if (vcbSupportedSession()) {
+      if (/^[0-9.,\-xXmMcC]$/.test(e.key)) {
+        e.preventDefault();
+        vcbBuffer += e.key;
+        vcbActive = true;
+        updateVcbDisplay();
+        return;
+      }
+      if (e.key === "Backspace" && vcbActive) {
+        e.preventDefault();
+        vcbBuffer = vcbBuffer.slice(0, -1);
+        vcbActive = vcbBuffer.length > 0;
+        updateVcbDisplay();
+        return;
+      }
+      if (e.key === "Enter" && vcbActive) {
+        e.preventDefault();
+        applyVcbCommit();
+        return;
+      }
+      if (e.key === "Escape" && vcbActive) {
+        e.preventDefault();
+        cancelVcb();
+        return;
+      }
+    }
+
     var inferenceSessionActive = !!(lineDrawing || faceLineDrawing || drawing || moving);
     if (inferenceSessionActive && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
@@ -2681,6 +2845,39 @@
     selectSingle(vol);
     setTool("pushpull");
     persistState();
+  }
+
+  // Extends the in-progress ground line's current segment to an exact typed
+  // length, continuing in whichever direction the mouse (or an active axis
+  // lock) had already established (lineDrawing.lastDir, tracked every
+  // pointermove) -- mirrors how closing-by-proximity already works for a
+  // real click, just triggered by Enter instead.
+  function applyGroundLineSegmentExact(length) {
+    if (!lineDrawing || !lineDrawing.lastDir) return;
+    var origin = lineDrawing.points[lineDrawing.points.length - 1];
+    var newPoint = origin.clone().addScaledVector(lineDrawing.lastDir, length);
+    var first = lineDrawing.points[0];
+    if (lineDrawing.points.length >= 3 && first.distanceTo(newPoint) < 0.35) {
+      finalizeLineDrawing();
+    } else {
+      lineDrawing.points.push(newPoint);
+      updateLinePreview(newPoint);
+    }
+  }
+
+  function applyFaceLineSegmentExact(length) {
+    if (!faceLineDrawing || !faceLineDrawing.lastDir) return;
+    var origin = faceLineDrawing.points[faceLineDrawing.points.length - 1];
+    var newUV = { u: origin.u + faceLineDrawing.lastDir.u * length, v: origin.v + faceLineDrawing.lastDir.v * length };
+    var first = faceLineDrawing.points[0];
+    var newWorld = faceUVToWorld(faceLineDrawing.axis, newUV.u, newUV.v, faceLineDrawing.faceOffset);
+    var firstWorld = faceUVToWorld(faceLineDrawing.axis, first.u, first.v, faceLineDrawing.faceOffset);
+    if (faceLineDrawing.points.length >= 3 && firstWorld.distanceTo(newWorld) < 0.35) {
+      finalizeFaceLineDrawing();
+    } else {
+      faceLineDrawing.points.push(newUV);
+      updateFaceLinePreview(newUV);
+    }
   }
 
   function cancelCircleDrawing() {
@@ -2940,6 +3137,65 @@
     if (axis === "x") { v.mesh.scale.x = size; v.mesh.position.x = mid; }
     else { v.mesh.scale.z = size; v.mesh.position.z = mid; }
     showDims(v.mesh.scale.x, v.mesh.scale.z, v.mesh.scale.y);
+  }
+
+  // Same effect as applyPushPull, but takes the target size directly (typed via
+  // the VCB) instead of a mouse-drag delta -- avoids re-deriving the delta that
+  // would produce a given absolute size for each of the three axis cases.
+  function applyPushPullExact(exactSize) {
+    var v = pulling.vol, axis = pulling.axis, sign = pulling.sign;
+    var minSize = 0.1;
+    if (axis === "y") {
+      var h = Math.max(minSize, Math.min(60, exactSize));
+      v.mesh.scale.y = h;
+      showDims(v.mesh.scale.x, v.mesh.scale.z, h);
+      return;
+    }
+    var size = Math.max(minSize, exactSize);
+    var newFacePos = pulling.fixedPos + sign * size;
+    var lo = Math.min(newFacePos, pulling.fixedPos), hi = Math.max(newFacePos, pulling.fixedPos);
+    var mid = (lo + hi) / 2;
+    if (axis === "x") { v.mesh.scale.x = size; v.mesh.position.x = mid; }
+    else { v.mesh.scale.z = size; v.mesh.position.z = mid; }
+    showDims(v.mesh.scale.x, v.mesh.scale.z, v.mesh.scale.y);
+  }
+
+  // Sets the in-progress ground rectangle to an exact width/depth (typed via
+  // the VCB), preserving whichever direction the mouse had already dragged
+  // toward from the anchor corner (drawing.lastX/lastZ, tracked every
+  // pointermove) so typing doesn't flip the rectangle to the wrong quadrant.
+  function applyRectangleExact(w, d) {
+    var signX = (drawing.lastX !== undefined && drawing.lastX < drawing.startX) ? -1 : 1;
+    var signZ = (drawing.lastZ !== undefined && drawing.lastZ < drawing.startZ) ? -1 : 1;
+    var minX = signX > 0 ? drawing.startX : drawing.startX - w;
+    var minZ = signZ > 0 ? drawing.startZ : drawing.startZ - d;
+    drawing.vol.mesh.scale.set(w, 0.02, d);
+    drawing.vol.mesh.position.set(minX + w / 2, 0, minZ + d / 2);
+    showDims(w, d, 0);
+  }
+
+  // Ends the current ground-rectangle drag exactly like a real pointerup would
+  // (same code either way) -- factored out so the VCB commit path can trigger
+  // it too, once it has already set the exact typed size on drawing.vol.mesh.
+  function finalizeDrawingSession() {
+    var w = drawing.vol.mesh.scale.x, d = drawing.vol.mesh.scale.z;
+    if (w < 0.15 || d < 0.15) {
+      removeVolume(drawing.vol);
+      hideOutline();
+      hideDims();
+    } else {
+      snapshot();
+      var minX = drawing.vol.mesh.position.x - w / 2, minZ = drawing.vol.mesh.position.z - d / 2;
+      removeVolume(drawing.vol);
+      var undoBefore = undoStack.pop();
+      var vol = makeVolume(minX, minZ, w, d, 2.5, activeSwatch);
+      undoStack.push(undoBefore);
+      selectSingle(vol);
+      setTool("pushpull");
+    }
+    drawing = null;
+    hideInferenceOverlay();
+    persistState();
   }
 
   // ---- Scale: stretches the WHOLE shape proportionally along one axis (unlike
@@ -3910,6 +4166,7 @@
   }
 
   function onPointerDown(e) {
+    if (vcbActive) cancelVcb();
     if (e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey)) {
       orbiting = e.button === 2;
       panning = e.button === 1 || (e.button === 0 && e.shiftKey);
@@ -4351,6 +4608,8 @@
       return;
     }
 
+    if (vcbActive) return; // a precise value is being typed; freeze the mouse-driven preview
+
     if (faceLineDrawing) {
       var flmHit = pickPointOnPlane(e, faceLineDrawing.plane);
       if (flmHit) {
@@ -4358,7 +4617,11 @@
         var flmOrigin3 = faceUVToWorld(faceLineDrawing.axis, flmLastUV.u, flmLastUV.v, faceLineDrawing.faceOffset);
         var flmEff = computeEffectivePoint(flmOrigin3, flmHit, { axisCandidates: axisCandidatesForFace(faceLineDrawing.axis) });
         flmEff = faceLineDrawing.plane.projectPoint(flmEff, new THREE.Vector3());
-        updateFaceLinePreview(faceUV(faceLineDrawing.axis, flmEff));
+        var flmEffUV = faceUV(faceLineDrawing.axis, flmEff);
+        var flmDu = flmEffUV.u - flmLastUV.u, flmDv = flmEffUV.v - flmLastUV.v;
+        var flmDist = Math.hypot(flmDu, flmDv);
+        if (flmDist > 1e-4) faceLineDrawing.lastDir = { u: flmDu / flmDist, v: flmDv / flmDist };
+        updateFaceLinePreview(flmEffUV);
       }
       return;
     }
@@ -4389,6 +4652,8 @@
       if (lmpRaw) {
         var lmpOrigin = lineDrawing.points[lineDrawing.points.length - 1];
         var lmp = computeEffectivePoint(lmpOrigin, lmpRaw, {});
+        var lmpDist = lmpOrigin.distanceTo(lmp);
+        if (lmpDist > 1e-4) lineDrawing.lastDir = lmp.clone().sub(lmpOrigin).divideScalar(lmpDist);
         updateLinePreview(lmp);
       }
       return;
@@ -4474,6 +4739,7 @@
       // independently), so no axis-lock/length-match here -- only point-snap
       // the opposite corner onto an existing endpoint/midpoint if close.
       var p = computeEffectivePoint(null, pRaw2, { allowAxis: false, allowLengthMatch: false, excludeVol: drawing.vol });
+      drawing.lastX = p.x; drawing.lastZ = p.z;
       var minX = Math.min(drawing.startX, p.x), maxX = Math.max(drawing.startX, p.x);
       var minZ = Math.min(drawing.startZ, p.z), maxZ = Math.max(drawing.startZ, p.z);
       var w = Math.max(maxX - minX, 0.02), d = Math.max(maxZ - minZ, 0.02);
@@ -4651,26 +4917,8 @@
       try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
       return;
     }
-    if (drawing) {
-      var w = drawing.vol.mesh.scale.x, d = drawing.vol.mesh.scale.z;
-      if (w < 0.15 || d < 0.15) {
-        removeVolume(drawing.vol);
-        hideOutline();
-        hideDims();
-      } else {
-        snapshot();
-        var minX = drawing.vol.mesh.position.x - w / 2, minZ = drawing.vol.mesh.position.z - d / 2;
-        removeVolume(drawing.vol);
-        var undoBefore = undoStack.pop();
-        var vol = makeVolume(minX, minZ, w, d, 2.5, activeSwatch);
-        undoStack.push(undoBefore);
-        selectSingle(vol);
-        setTool("pushpull");
-      }
-      drawing = null;
-      hideInferenceOverlay();
-    }
-    if (pulling) { pulling = null; hideOutline(); }
+    if (drawing) { finalizeDrawingSession(); }
+    if (pulling) { pulling = null; hideOutline(); persistState(); }
     if (scaling) {
       if (scaling.vol.isCompound) bakeMeshTransform(scaling.vol.mesh);
       scaling = null;
