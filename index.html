@@ -1028,6 +1028,10 @@
       <button class="preset-btn" id="openingPresetDoor" type="button" aria-pressed="true">Dörr</button>
       <button class="preset-btn" id="openingPresetWindow" type="button" aria-pressed="false">Fönster</button>
     </div>
+    <div class="opt-row"><label for="openingWidth">Bredd cm</label><input type="number" id="openingWidth" min="20" max="400" step="5"></div>
+    <div class="opt-row"><label for="openingHeight">Höjd cm</label><input type="number" id="openingHeight" min="20" max="400" step="5"></div>
+    <div class="opt-row" id="openingSillRow"><label for="openingSill">Brösthöjd cm</label><input type="number" id="openingSill" min="0" max="250" step="5"></div>
+    <p class="tool-options-hint">Om ett uttag inte får plats: väggen är kortare än bredden ovan — minska bredden eller välj en annan vägg.</p>
   </div>
 
   <div class="inference-label" id="inferenceLabel"><span class="dot" id="inferenceLabelDot"></span><span id="inferenceLabelText"></span></div>
@@ -1202,6 +1206,10 @@
   var openingOptionsPanelEl = document.getElementById("openingOptionsPanel");
   var openingPresetDoorEl = document.getElementById("openingPresetDoor");
   var openingPresetWindowEl = document.getElementById("openingPresetWindow");
+  var openingWidthEl = document.getElementById("openingWidth");
+  var openingHeightEl = document.getElementById("openingHeight");
+  var openingSillEl = document.getElementById("openingSill");
+  var openingSillRowEl = document.getElementById("openingSillRow");
   var propertiesPanelEl = document.getElementById("propertiesPanel");
   var propWidthEl = document.getElementById("propWidth");
   var propDepthEl = document.getElementById("propDepth");
@@ -3456,10 +3464,40 @@
   var wallHeightM = parseFloat(wallHeightInputEl.value) / 100 || 2.5;
   var openingHover = null;  // { mesh }
   var openingPreset = "door";
-  var OPENING_SIZES = {
-    door: { width: 0.9, height: 2.1, sill: 0 },
-    window: { width: 1.2, height: 1.2, sill: 0.9 }
-  };
+  // Door has no sill (it always reaches the floor); Window's own sill is
+  // user-editable. Kept as separate width/height per preset -- rather than
+  // one shared size -- because a door and a window on the same wall almost
+  // never want the same width, and editing one's number shouldn't silently
+  // change the other's remembered value.
+  var doorWidthM = 0.9, doorHeightM = 2.1;
+  var windowWidthM = 1.2, windowHeightM = 1.2, windowSillM = 0.9;
+  function currentOpeningSize() {
+    return openingPreset === "door"
+      ? { width: doorWidthM, height: doorHeightM, sill: 0 }
+      : { width: windowWidthM, height: windowHeightM, sill: windowSillM };
+  }
+  function refreshOpeningFields() {
+    var s = currentOpeningSize();
+    openingWidthEl.value = Math.round(s.width * 100);
+    openingHeightEl.value = Math.round(s.height * 100);
+    openingSillEl.value = Math.round(s.sill * 100);
+    openingSillRowEl.style.display = openingPreset === "window" ? "" : "none";
+  }
+  openingWidthEl.addEventListener("input", function () {
+    var v = parseFloat(openingWidthEl.value);
+    if (isNaN(v) || v <= 0) return;
+    if (openingPreset === "door") doorWidthM = v / 100; else windowWidthM = v / 100;
+  });
+  openingHeightEl.addEventListener("input", function () {
+    var v = parseFloat(openingHeightEl.value);
+    if (isNaN(v) || v <= 0) return;
+    if (openingPreset === "door") doorHeightM = v / 100; else windowHeightM = v / 100;
+  });
+  openingSillEl.addEventListener("input", function () {
+    var v = parseFloat(openingSillEl.value);
+    if (isNaN(v) || v < 0) return;
+    windowSillM = v / 100;
+  });
   wallThicknessEl.addEventListener("input", function () {
     var v = parseFloat(wallThicknessEl.value);
     if (!isNaN(v) && v > 0) wallThicknessM = v / 100;
@@ -3472,6 +3510,7 @@
     openingPreset = preset;
     openingPresetDoorEl.setAttribute("aria-pressed", String(preset === "door"));
     openingPresetWindowEl.setAttribute("aria-pressed", String(preset === "window"));
+    refreshOpeningFields();
   }
   function toggleOpeningPreset() {
     setOpeningPreset(openingPreset === "door" ? "window" : "door");
@@ -3480,6 +3519,7 @@
   }
   openingPresetDoorEl.addEventListener("click", function () { setOpeningPreset("door"); });
   openingPresetWindowEl.addEventListener("click", function () { setOpeningPreset("window"); });
+  refreshOpeningFields();
   wallExtrudeBtnEl.addEventListener("click", function () { extrudeFlatWalls(); });
 
   function cancelTapeDrawing() {
@@ -4941,7 +4981,7 @@
     var heightIsU = axis === "x";
     var heightRange = heightIsU ? [footprint.uMin, footprint.uMax] : [footprint.vMin, footprint.vMax];
     var alongRange = heightIsU ? [footprint.vMin, footprint.vMax] : [footprint.uMin, footprint.uMax];
-    var size = OPENING_SIZES[openingPreset];
+    var size = currentOpeningSize();
     var alongSpan = alongRange[1] - alongRange[0];
     var heightSpan = heightRange[1] - heightRange[0];
     if (alongSpan < size.width - 1e-6 || heightSpan < size.sill + size.height - 1e-6) return null;
@@ -5681,8 +5721,17 @@
           openingHover.mesh.position.set((bOpM.min.x + bOpM.max.x) / 2, (bOpM.min.y + bOpM.max.y) / 2, (bOpM.min.z + bOpM.max.z) / 2);
         }
         openingHover.mesh.visible = true;
-      } else if (openingHover) {
-        openingHover.mesh.visible = false;
+        setHint(HINTS.opening);
+      } else {
+        if (openingHover) openingHover.mesh.visible = false;
+        // Give this feedback continuously while hovering a face that can't
+        // fit, not just as a flash after clicking -- a wall shorter than
+        // the current width is the single most common reason nothing
+        // seems to happen when placing a door/window.
+        var faOpM = hitOpM ? faceAxisFromNormal(hitOpM.face.normal) : null;
+        setHint(faOpM && faOpM.axis !== "y"
+          ? ((openingPreset === "door" ? "Dörren" : "Fönstret") + " får inte plats här – minska bredden i panelen eller välj en annan vägg")
+          : HINTS.opening);
       }
       return;
     }
