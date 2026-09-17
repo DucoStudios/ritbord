@@ -881,7 +881,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="1"/><rect x="8" y="8" width="8" height="8" rx="0.5" stroke-dasharray="2 2"/></svg>
       <span class="btn-label">Offset</span>
     </button>
-    <button class="tool-btn" data-tool="opening" aria-pressed="false" title="Opening: click a wall to cut a door or window there (pick which on the left) (O)">
+    <button class="tool-btn" data-tool="opening" aria-pressed="false" title="Opening: click a wall to cut a door or window there. Press D to toggle Door/Window (O)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h6M15 12h6"/><path d="M9 12a6 6 0 016-6"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
       <span class="btn-label">Opening</span>
     </button>
@@ -906,6 +906,10 @@
     <button class="tool-btn" data-action="lockgroup" title="Lock/unlock the selected group (K)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="1.5"/><path d="M7.5 11V7.5a4.5 4.5 0 019 0V11"/></svg>
       <span class="btn-label">Lock</span>
+    </button>
+    <button class="tool-btn" data-action="duplicate" title="Duplicate the selected shape(s) or group, offset slightly so it's easy to grab with Move (Cmd/Ctrl+D)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="12" rx="1.5"/><path d="M9 7V5a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-2"/></svg>
+      <span class="btn-label">Duplicate</span>
     </button>
     <span class="tool-sep"></span>
     <button class="tool-btn" data-action="save" title="Save: download this drawing as a file to your device">
@@ -1060,7 +1064,7 @@
     <div class="help-row"><kbd>E</kbd><span>Extrude walls: raise every flat wall to the height it was drawn with</span></div>
     <div class="help-row"><kbd>Wall settings icon</kbd><span>Thickness/height and the Extrude walls button, open on demand so it never sits over the canvas while you draw</span></div>
     <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there</span></div>
-    <div class="help-row"><kbd>Opening settings icon</kbd><span>Choose Door or Window, open on demand</span></div>
+    <div class="help-row"><kbd>D</kbd><span>Toggle Door/Window for the Opening tool (also in the opening icon's panel)</span></div>
     <div class="help-row"><kbd>Image</kbd><span>Import a reference image flat on the ground, on the active layer -- put it on its own layer, then draw walls on a different layer on top of it</span></div>
     <div class="help-row"><kbd>Scale image</kbd><span>Click two points on the image, type the real distance between them + Enter, to calibrate it to true scale</span></div>
     <div class="help-row"><kbd>Remove image</kbd><span>Removes the reference image once you're done tracing it (it isn't saved with the drawing)</span></div>
@@ -1079,6 +1083,7 @@
     <div class="help-row"><kbd>C</kbd><span>Chamfer the edges of the selected shape</span></div>
     <div class="help-row"><kbd>U</kbd><span>Group the selected shapes (shift-click more first)</span></div>
     <div class="help-row"><kbd>K</kbd><span>Lock/unlock the selected group</span></div>
+    <div class="help-row"><kbd>⌘/Ctrl</kbd><kbd>D</kbd><span>Duplicate the selected shape(s) or group (shift-click to select several first)</span></div>
     <div class="help-row"><kbd>Layers panel</kbd><span>New layer, show/hide, lock a whole layer</span></div>
     <h3>Mouse</h3>
     <div class="help-row"><kbd>Left-click, drag</kbd><span>Active tool</span></div>
@@ -2640,6 +2645,51 @@
     persistState();
   }
 
+  // Duplicates the current selection -- one or more loose shapes, or a
+  // whole group (clicking one member already auto-selects every member,
+  // see selectSingle). Grouped members get a single shared *new* groupId
+  // so the copy is its own independent group, not merged into the
+  // original. Offset by a fixed 0.4m so the copy never lands exactly on
+  // top of the original and is immediately visible/grabbable with Move.
+  var DUPLICATE_OFFSET = 0.4;
+  function duplicateSelected() {
+    if (!selection.length) {
+      setHint("Select something first to duplicate it");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+      return;
+    }
+    snapshot();
+    var groupIdMap = {};
+    var newSelection = selection.map(function (v) {
+      var desc = describeVolume(v);
+      if (desc.kind === "csg") {
+        for (var i = 0; i < desc.positions.length; i += 3) {
+          desc.positions[i] += DUPLICATE_OFFSET;
+          desc.positions[i + 2] += DUPLICATE_OFFSET;
+        }
+      } else {
+        desc.x += DUPLICATE_OFFSET;
+        desc.z += DUPLICATE_OFFSET;
+      }
+      var newVol = restoreVolume(desc);
+      if (v.groupId) {
+        if (!groupIdMap[v.groupId]) groupIdMap[v.groupId] = nextGroupId++;
+        newVol.groupId = groupIdMap[v.groupId];
+      } else {
+        newVol.groupId = null;
+      }
+      return newVol;
+    });
+    Object.keys(groupIdMap).forEach(function (oldId) {
+      var oldGroup = groups.filter(function (g) { return g.id == oldId; })[0];
+      groups.push({ id: groupIdMap[oldId], locked: oldGroup ? oldGroup.locked : false });
+    });
+    setSelection(newSelection);
+    setHint("Duplicated " + newSelection.length + " shape" + (newSelection.length === 1 ? "" : "s"));
+    setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+    persistState();
+  }
+
   function toggleLockSelectedGroup() {
     if (!selection.length || !selection[0].groupId || !selection.every(function (v) { return v.groupId === selection[0].groupId; })) {
       setHint("Select a whole group first (click a group member)");
@@ -2810,7 +2860,7 @@
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
     wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E). Thickness/height: the wall icon in the toolbar",
-    opening: "Click a wall to cut a door or window there. Door/Window choice: the opening icon in the toolbar",
+    opening: "Click a wall to cut a door or window there. Press D to toggle Door/Window",
     scaleimage: "Click two points on the reference image, then type the real distance between them + Enter"
   };
 
@@ -2842,6 +2892,7 @@
   document.querySelector('[data-action="chamfer"]').addEventListener("click", chamferSelected);
   document.querySelector('[data-action="group"]').addEventListener("click", groupSelected);
   document.querySelector('[data-action="lockgroup"]').addEventListener("click", toggleLockSelectedGroup);
+  document.querySelector('[data-action="duplicate"]').addEventListener("click", duplicateSelected);
   document.querySelector('[data-action="clearguides"]').addEventListener("click", function () {
     if (!guides.length) return;
     guides = [];
@@ -3057,6 +3108,7 @@
       if (e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
       else if (e.key.toLowerCase() === "s") { e.preventDefault(); saveToFile(); }
       else if (e.key.toLowerCase() === "o") { e.preventDefault(); openFileInputEl.click(); }
+      else if (e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSelected(); }
       return;
     }
     if (e.key === "1") setTool("select");
@@ -3075,6 +3127,7 @@
     else if (e.key.toLowerCase() === "f") setTool("offset");
     else if (e.key.toLowerCase() === "w") setTool("wall");
     else if (e.key.toLowerCase() === "o") setTool("opening");
+    else if (e.key.toLowerCase() === "d") toggleOpeningPreset();
     else if (e.key.toLowerCase() === "e") extrudeFlatWalls();
     else if (e.key.toLowerCase() === "s") subtractSelected();
     else if (e.key.toLowerCase() === "c") chamferSelected();
@@ -3167,16 +3220,18 @@
     var v = parseFloat(wallHeightInputEl.value);
     if (!isNaN(v) && v > 0) wallHeightM = v / 100;
   });
-  openingPresetDoorEl.addEventListener("click", function () {
-    openingPreset = "door";
-    openingPresetDoorEl.setAttribute("aria-pressed", "true");
-    openingPresetWindowEl.setAttribute("aria-pressed", "false");
-  });
-  openingPresetWindowEl.addEventListener("click", function () {
-    openingPreset = "window";
-    openingPresetWindowEl.setAttribute("aria-pressed", "true");
-    openingPresetDoorEl.setAttribute("aria-pressed", "false");
-  });
+  function setOpeningPreset(preset) {
+    openingPreset = preset;
+    openingPresetDoorEl.setAttribute("aria-pressed", String(preset === "door"));
+    openingPresetWindowEl.setAttribute("aria-pressed", String(preset === "window"));
+  }
+  function toggleOpeningPreset() {
+    setOpeningPreset(openingPreset === "door" ? "window" : "door");
+    setHint((openingPreset === "door" ? "Dörr" : "Fönster") + " valt för Uttag (D)");
+    setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+  }
+  openingPresetDoorEl.addEventListener("click", function () { setOpeningPreset("door"); });
+  openingPresetWindowEl.addEventListener("click", function () { setOpeningPreset("window"); });
   wallExtrudeBtnEl.addEventListener("click", function () { extrudeFlatWalls(); });
 
   function cancelTapeDrawing() {
