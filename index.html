@@ -1861,10 +1861,29 @@
 
   // ---- Toolbar collapse: get it out of the way for an unobstructed look at
   // the model; a small tab stays put so it's never actually lost ----
+  // The wall/opening/properties side panels sit just under the toolbar --
+  // but the toolbar wraps to 2-3 rows once enough buttons don't fit one
+  // line (routine at normal desktop widths now that Wall/Extrude
+  // walls/Opening exist), so a fixed top offset used to leave a wrapped row
+  // sitting underneath the panel, unclickable. Recomputed from the
+  // toolbar's real rendered height instead. Skipped at the mobile
+  // breakpoint, where CSS already bottom-anchors these panels (an inline
+  // style would outrank that media-query rule).
+  function positionToolOptionsPanels() {
+    var panels = [wallOptionsPanelEl, openingOptionsPanelEl, propertiesPanelEl];
+    if (window.innerWidth <= 720) {
+      panels.forEach(function (p) { p.style.top = ""; });
+      return;
+    }
+    var topPx = (toolbarEl.classList.contains("collapsed") ? 18 : Math.round(toolbarEl.getBoundingClientRect().bottom + 10)) + "px";
+    panels.forEach(function (p) { p.style.top = topPx; });
+  }
+
   function toggleToolbar(hide) {
     var next = hide !== undefined ? hide : !toolbarEl.classList.contains("collapsed");
     toolbarEl.classList.toggle("collapsed", next);
     toolbarShowTabEl.classList.toggle("visible", next);
+    positionToolOptionsPanels();
   }
   toolbarCollapseBtnEl.addEventListener("click", function () { toggleToolbar(true); });
   toolbarShowTabEl.addEventListener("click", function () { toggleToolbar(false); });
@@ -5639,7 +5658,9 @@
     if (is2D) updateOrthoFrustum();
     renderer.setSize(window.innerWidth, window.innerHeight);
     updateScaleBar();
+    positionToolOptionsPanels();
   });
+  positionToolOptionsPanels();
 
   var mq = window.matchMedia("(prefers-color-scheme: dark)");
   mq.addEventListener ? mq.addEventListener("change", applyTheme) : mq.addListener(applyTheme);
