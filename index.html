@@ -105,10 +105,10 @@
   }
 
   #stage.tool-rectangle canvas,
-  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas { cursor: crosshair; }
+  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas, #stage.tool-wall canvas { cursor: crosshair; }
   #stage.tool-pan canvas { cursor: grab; }
   #stage.tool-pan.dragging canvas { cursor: grabbing; }
-  #stage.tool-paint canvas { cursor: pointer; }
+  #stage.tool-paint canvas, #stage.tool-opening canvas { cursor: pointer; }
   #stage.dragging canvas { cursor: grabbing; }
 
   .toolbar {
@@ -182,6 +182,7 @@
     .wordmark { padding: 0 8px 0 6px; font-size: 0.86rem; }
     .hint { top: 96px; max-width: calc(100vw - 32px); text-align: center; }
     .sun-panel { left: 12px; right: 12px; width: auto; bottom: 16px; }
+    .tool-options { left: 12px; right: 12px; width: auto; top: auto; bottom: 16px; }
   }
 
   .wordmark {
@@ -494,6 +495,67 @@
     accent-color: var(--accent);
   }
 
+  .tool-options {
+    position: fixed;
+    top: 78px;
+    left: 18px;
+    width: 200px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 12px 14px 14px;
+    box-shadow: 0 8px 24px var(--shadow);
+    z-index: 10;
+    display: none;
+  }
+  .tool-options.visible { display: block; }
+  .tool-options h2 {
+    margin: 0 0 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .tool-options .opt-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .tool-options .opt-row:last-child { margin-bottom: 0; }
+  .tool-options .opt-row label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--steel);
+    flex: none;
+  }
+  .tool-options .opt-row input[type="number"] {
+    width: 64px;
+    background: var(--paper);
+    border: 1px solid var(--panel-border);
+    border-radius: 7px;
+    color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.78rem;
+    padding: 4px 6px;
+  }
+  .tool-options .preset-btn {
+    flex: 1;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tool-options .preset-btn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+
   .sun-readout {
     margin-top: 10px;
     padding-top: 10px;
@@ -751,6 +813,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
       <span class="btn-label">Draw</span>
     </button>
+    <button class="tool-btn" data-tool="wall" aria-pressed="false" title="Wall: click corners for a wall centerline (straight segments), click near the start to close (W)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="0.6"/><path d="M3 12h18" stroke-dasharray="1.6 1.6"/></svg>
+      <span class="btn-label">Wall</span>
+    </button>
     <button class="tool-btn" data-tool="pushpull" aria-pressed="false" title="Push/pull volume (3)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 3l-3.5 3.5M12 3l3.5 3.5"/><rect x="5" y="15" width="14" height="6" rx="1"/></svg>
       <span class="btn-label">Push/Pull</span>
@@ -799,6 +865,10 @@
     <button class="tool-btn" data-tool="offset" aria-pressed="false" title="Offset: click a face, drag inward for a parallel inset panel you can push/pull separately (F)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="1"/><rect x="8" y="8" width="8" height="8" rx="0.5" stroke-dasharray="2 2"/></svg>
       <span class="btn-label">Offset</span>
+    </button>
+    <button class="tool-btn" data-tool="opening" aria-pressed="false" title="Opening: click a wall to cut a door or window there (pick which on the left) (O)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h6M15 12h6"/><path d="M9 12a6 6 0 016-6"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
+      <span class="btn-label">Opening</span>
     </button>
     <button class="tool-btn" data-action="clearguides" title="Remove all guide lines">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5" stroke-dasharray="2 2"/><path d="M4 7l3-3 13 13-3 3z"/></svg>
@@ -884,6 +954,20 @@
     <span><span class="dim-label">H</span><span id="dimH">0.0</span> m</span>
   </div>
 
+  <div class="tool-options" id="wallOptionsPanel">
+    <h2>Vägg</h2>
+    <div class="opt-row"><label for="wallThickness">Tjocklek cm</label><input type="number" id="wallThickness" value="15" min="5" max="60" step="1"></div>
+    <div class="opt-row"><label for="wallHeight">Höjd cm</label><input type="number" id="wallHeight" value="250" min="50" max="600" step="5"></div>
+  </div>
+
+  <div class="tool-options" id="openingOptionsPanel">
+    <h2>Uttag</h2>
+    <div class="opt-row">
+      <button class="preset-btn" id="openingPresetDoor" type="button" aria-pressed="true">Dörr</button>
+      <button class="preset-btn" id="openingPresetWindow" type="button" aria-pressed="false">Fönster</button>
+    </div>
+  </div>
+
   <div class="inference-label" id="inferenceLabel"><span class="dot" id="inferenceLabelDot"></span><span id="inferenceLabelText"></span></div>
 
   <div class="vcb-box" id="vcbBox"><span class="vcb-hint" id="vcbHint">Mått</span><span id="vcbText"></span><span class="vcb-caret"></span></div>
@@ -921,6 +1005,8 @@
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
     <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line</span></div>
     <div class="help-row"><kbd>G</kbd><span>Roof: click a flat top, drag up to fold it into a gable roof</span></div>
+    <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only), click near the start to close it, Esc to stop</span></div>
+    <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there, pick which in the panel on the left</span></div>
     <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
     <div class="help-row"><kbd>Library panel</kbd><span>Place reference people, trees and vehicles</span></div>
     <div class="help-row"><kbd>Esc</kbd><span>Cancel a Line or Arc in progress</span></div>
@@ -1032,6 +1118,12 @@
   var libraryToggleEl = document.getElementById("libraryToggle");
   var libraryPanelEl = document.getElementById("libraryPanel");
   var propGridEl = document.getElementById("propGrid");
+  var wallOptionsPanelEl = document.getElementById("wallOptionsPanel");
+  var wallThicknessEl = document.getElementById("wallThickness");
+  var wallHeightInputEl = document.getElementById("wallHeight");
+  var openingOptionsPanelEl = document.getElementById("openingOptionsPanel");
+  var openingPresetDoorEl = document.getElementById("openingPresetDoor");
+  var openingPresetWindowEl = document.getElementById("openingPresetWindow");
 
   var PALETTE = [
     "#f4f0e6", "#e6ddc8", "#ffffff", "#d3c6a8", "#b6a888", "#8a7d64",
@@ -2425,7 +2517,9 @@
     arc: "Click the center, click the start point, then click to set the sweep",
     tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
-    offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel"
+    offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
+    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical), click near the start to close the loop, Esc to stop",
+    opening: "Click a wall to cut a door or window there (pick which on the left)"
   };
 
   function setTool(next) {
@@ -2437,12 +2531,16 @@
     if (next !== "arc") cancelArcDrawing();
     if (next !== "tape") cancelTapeDrawing();
     if (next !== "offset") cancelOffsetDrawing();
+    if (next !== "wall") cancelWallDrawing();
+    if (next !== "opening") cancelOpeningPreview();
     if (next !== "place-prop") armedProp = null;
     hideInferenceOverlay();
     tool = next;
     stageEl.className = "tool-" + tool;
     toolButtons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tool === tool ? "true" : "false"); });
     updateSwatchRailVisibility();
+    wallOptionsPanelEl.classList.toggle("visible", tool === "wall");
+    openingOptionsPanelEl.classList.toggle("visible", tool === "opening");
     setHint(HINTS[tool] || "");
   }
   toolButtons.forEach(function (b) {
@@ -2673,12 +2771,14 @@
     else if (e.key.toLowerCase() === "h") setTool("pan");
     else if (e.key.toLowerCase() === "g") setTool("roof");
     else if (e.key.toLowerCase() === "f") setTool("offset");
+    else if (e.key.toLowerCase() === "w") setTool("wall");
+    else if (e.key.toLowerCase() === "o") setTool("opening");
     else if (e.key.toLowerCase() === "s") subtractSelected();
     else if (e.key.toLowerCase() === "c") chamferSelected();
     else if (e.key.toLowerCase() === "u") groupSelected();
     else if (e.key.toLowerCase() === "k") toggleLockSelectedGroup();
     else if (e.key.toLowerCase() === "t") toggleToolbar();
-    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); }
+    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); cancelWallDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if (e.key === "Enter" && faceLineDrawing && faceLineDrawing.points.length >= 3) finalizeFaceLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
@@ -2746,6 +2846,33 @@
   var faceArcDrawing = null; // { targetVol, axis, sign, faceOffset, plane, phase:'radius'|'sweep', center:{u,v}, radius, startAngle, sweepAccum, lastRawAngle, mesh, radiusLine }
   var arcDrawing = null;    // { phase: 'radius'|'sweep', center, radius, startAngle, sweepAccum, lastRawAngle, mesh, radiusLine }
   var tapeDrawing = null;   // { origin, line }
+  var wallDrawing = null;   // { points: [Vector3], line: THREE.Line }
+  var wallThicknessM = parseFloat(wallThicknessEl.value) / 100 || 0.15;
+  var wallHeightM = parseFloat(wallHeightInputEl.value) / 100 || 2.5;
+  var openingHover = null;  // { mesh }
+  var openingPreset = "door";
+  var OPENING_SIZES = {
+    door: { width: 0.9, height: 2.1, sill: 0 },
+    window: { width: 1.2, height: 1.2, sill: 0.9 }
+  };
+  wallThicknessEl.addEventListener("input", function () {
+    var v = parseFloat(wallThicknessEl.value);
+    if (!isNaN(v) && v > 0) wallThicknessM = v / 100;
+  });
+  wallHeightInputEl.addEventListener("input", function () {
+    var v = parseFloat(wallHeightInputEl.value);
+    if (!isNaN(v) && v > 0) wallHeightM = v / 100;
+  });
+  openingPresetDoorEl.addEventListener("click", function () {
+    openingPreset = "door";
+    openingPresetDoorEl.setAttribute("aria-pressed", "true");
+    openingPresetWindowEl.setAttribute("aria-pressed", "false");
+  });
+  openingPresetWindowEl.addEventListener("click", function () {
+    openingPreset = "window";
+    openingPresetWindowEl.setAttribute("aria-pressed", "true");
+    openingPresetDoorEl.setAttribute("aria-pressed", "false");
+  });
 
   function cancelTapeDrawing() {
     if (!tapeDrawing) return;
@@ -2753,6 +2880,46 @@
     tapeDrawing.line.geometry.dispose();
     tapeDrawing = null;
     hideDims();
+  }
+
+  // ---- Wall tool: click a centerline, each segment is created immediately
+  // as its own axis-aligned box volume (thickness x length x wallHeightM),
+  // so it comes out of the ground already extruded -- no separate push/pull
+  // step. Segments are forced horizontal/vertical (never diagonal) because a
+  // plain box volume has no rotation to give it (see the axis-aligned-mesh
+  // invariant everywhere else in this file); this matches Rectangle's own
+  // axis-aligned footprints rather than Line's free-angle polygons.
+  function cancelWallDrawing() {
+    if (!wallDrawing) return;
+    scene.remove(wallDrawing.line);
+    wallDrawing.line.geometry.dispose();
+    wallDrawing = null;
+    hideDims();
+  }
+
+  function constrainOrtho(origin, raw) {
+    var dx = raw.x - origin.x, dz = raw.z - origin.z;
+    if (Math.abs(dx) >= Math.abs(dz)) return new THREE.Vector3(raw.x, 0, origin.z);
+    return new THREE.Vector3(origin.x, 0, raw.z);
+  }
+
+  function createWallSegment(a, b) {
+    var dx = b.x - a.x, dz = b.z - a.z;
+    var len = Math.hypot(dx, dz);
+    if (len < 0.05) return null;
+    var t = wallThicknessM;
+    var minX, minZ, w, d;
+    if (Math.abs(dx) >= Math.abs(dz)) {
+      minX = Math.min(a.x, b.x); w = len;
+      minZ = (a.z + b.z) / 2 - t / 2; d = t;
+    } else {
+      minZ = Math.min(a.z, b.z); d = len;
+      minX = (a.x + b.x) / 2 - t / 2; w = t;
+    }
+    snapshot();
+    var vol = makeVolume(minX, minZ, w, d, wallHeightM, activeSwatch, 0);
+    persistState();
+    return vol;
   }
 
   function finalizeTape(endPoint) {
@@ -4053,6 +4220,76 @@
     return { uMin: uMin, uMax: uMax, vMin: vMin, vMax: vMax };
   }
 
+  // ---- Opening tool (door/window): click a wall's vertical face, cuts a
+  // standard-size hole through the wall's full thickness via the same CSG
+  // subtract subtractSelected() already uses, just with a synthetic cutter
+  // box (never added to the scene) instead of a second real volume. Works on
+  // both plain box walls and already-compound ones (e.g. a wall that already
+  // has one opening cut into it). faceUV always puts world Y (height) into a
+  // consistent u/v slot per axis (u for axis "x", v for axis "z" -- see
+  // faceUV above), so heightIsU below just mirrors that, it isn't a new
+  // convention.
+  function computeOpeningBounds(vol, hit) {
+    var fa = faceAxisFromNormal(hit.face.normal);
+    if (!fa || fa.axis === "y") return null;
+    var axis = fa.axis;
+    var faceOffset = axis === "x" ? hit.point.x : hit.point.z;
+    var footprint = wholeFaceFootprint(vol.mesh, axis, fa.sign, faceOffset);
+    var heightIsU = axis === "x";
+    var heightRange = heightIsU ? [footprint.uMin, footprint.uMax] : [footprint.vMin, footprint.vMax];
+    var alongRange = heightIsU ? [footprint.vMin, footprint.vMax] : [footprint.uMin, footprint.uMax];
+    var size = OPENING_SIZES[openingPreset];
+    var alongSpan = alongRange[1] - alongRange[0];
+    var heightSpan = heightRange[1] - heightRange[0];
+    if (alongSpan < size.width - 1e-6 || heightSpan < size.sill + size.height - 1e-6) return null;
+    var hitUV = faceUV(axis, hit.point);
+    var hitAlong = heightIsU ? hitUV.v : hitUV.u;
+    var center = Math.min(Math.max(hitAlong, alongRange[0] + size.width / 2), alongRange[1] - size.width / 2);
+    var alo = center - size.width / 2, ahi = center + size.width / 2;
+    var hlo = heightRange[0] + size.sill, hhi = hlo + size.height;
+    var uRange = heightIsU ? [hlo, hhi] : [alo, ahi];
+    var vRange = heightIsU ? [alo, ahi] : [hlo, hhi];
+    var bbox = new THREE.Box3().setFromObject(vol.mesh);
+    var thickMin = (axis === "x" ? bbox.min.x : bbox.min.z) - 0.15;
+    var thickMax = (axis === "x" ? bbox.max.x : bbox.max.z) + 0.15;
+    return boundsFromFace(axis, uRange[0], uRange[1], vRange[0], vRange[1], thickMin, thickMax);
+  }
+
+  function cancelOpeningPreview() {
+    if (!openingHover) return;
+    scene.remove(openingHover.mesh);
+    openingHover.mesh.material.dispose();
+    openingHover = null;
+  }
+
+  function placeOpening(vol, hit) {
+    var b = computeOpeningBounds(vol, hit);
+    if (!b) {
+      setHint(openingPreset === "door" ? "Väggen är för smal eller kort för en dörr här" : "Väggen är för smal eller kort för ett fönster här");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2400);
+      return;
+    }
+    var cutterMat = new THREE.MeshBasicMaterial();
+    var cutterMesh = makeBoxMesh(b.min, b.max, cutterMat);
+    var a = CSG.fromPolygons(meshToCSGPolygons(vol.mesh));
+    var c = CSG.fromPolygons(meshToCSGPolygons(cutterMesh));
+    var resultPolygons = a.subtract(c).toPolygons();
+    cutterMat.dispose();
+    if (!resultPolygons.length) {
+      setHint("Det gick inte att göra uttaget där");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2400);
+      return;
+    }
+    var geo = csgPolygonsToGeometry(resultPolygons);
+    geo.computeBoundingSphere();
+    snapshot();
+    var color = representativeColor(vol), layerId = vol.layerId, groupId = vol.groupId;
+    removeVolume(vol);
+    var newVol = addCompoundVolume(geo, color, layerId, groupId);
+    selectSingle(newVol);
+    persistState();
+  }
+
   function faceUVToWorld(axis, u, v, n) {
     if (axis === "x") return new THREE.Vector3(n, u, v);
     if (axis === "y") return new THREE.Vector3(u, n, v);
@@ -4579,6 +4816,42 @@
       var footprintO = wholeFaceFootprint(volO.mesh, axisO, signO, faceOffsetO);
       offsetDrawing = { targetVol: volO, axis: axisO, sign: signO, faceOffset: faceOffsetO, plane: planeO, footprint: footprintO, mesh: null, distance: 0 };
       renderer.domElement.setPointerCapture(e.pointerId);
+    } else if (tool === "wall") {
+      if (activeLayer().locked) {
+        setHint("Active layer is locked, switch layers in the Layers panel");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
+      var wRaw = groundHit(e);
+      if (!wRaw) return;
+      if (!wallDrawing) {
+        var wLineObj = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
+        scene.add(wLineObj);
+        wallDrawing = { points: [wRaw.clone()], line: wLineObj };
+        setLinePositions(wLineObj, wallDrawing.points, 0.03);
+      } else {
+        var wOrigin = wallDrawing.points[wallDrawing.points.length - 1];
+        var wPoint = constrainOrtho(wOrigin, wRaw);
+        var wFirst = wallDrawing.points[0];
+        if (wallDrawing.points.length >= 3 && wFirst.distanceTo(wPoint) < 0.35) {
+          createWallSegment(wOrigin, wFirst);
+          cancelWallDrawing();
+        } else if (wOrigin.distanceTo(wPoint) >= 0.05) {
+          createWallSegment(wOrigin, wPoint);
+          wallDrawing.points.push(wPoint);
+          setLinePositions(wallDrawing.line, wallDrawing.points, 0.03);
+        }
+      }
+    } else if (tool === "opening") {
+      var hitOp = volumeHit(e);
+      if (!hitOp) return;
+      var volOp = volumeOf(hitOp.object);
+      if (isLocked(volOp)) {
+        setHint("The shape is locked (group or layer)");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
+      placeOpening(volOp, hitOp);
     } else if (tool === "place-prop" && armedProp) {
       var pp = propSurfaceHit(e);
       if (!pp) return;
@@ -4609,6 +4882,37 @@
     }
 
     if (vcbActive) return; // a precise value is being typed; freeze the mouse-driven preview
+
+    if (wallDrawing) {
+      var wmRaw = groundHit(e);
+      if (wmRaw) {
+        var wmOrigin = wallDrawing.points[wallDrawing.points.length - 1];
+        var wmPoint = constrainOrtho(wmOrigin, wmRaw);
+        setLinePositions(wallDrawing.line, wallDrawing.points.concat([wmPoint]), 0.03);
+        showDims(wmOrigin.distanceTo(wmPoint), wallThicknessM, wallHeightM);
+      }
+      return;
+    }
+
+    if (tool === "opening") {
+      var hitOpM = volumeHit(e);
+      var bOpM = hitOpM ? computeOpeningBounds(volumeOf(hitOpM.object), hitOpM) : null;
+      if (bOpM) {
+        var ohW = Math.max(bOpM.max.x - bOpM.min.x, 0.002), ohH = Math.max(bOpM.max.y - bOpM.min.y, 0.002), ohD = Math.max(bOpM.max.z - bOpM.min.z, 0.002);
+        if (!openingHover) {
+          var ohMat = new THREE.MeshBasicMaterial({ color: 0xc1601f, transparent: true, opacity: 0.45, depthTest: false });
+          openingHover = { mesh: makeBoxMesh(bOpM.min, bOpM.max, ohMat) };
+          scene.add(openingHover.mesh);
+        } else {
+          openingHover.mesh.scale.set(ohW, ohH, ohD);
+          openingHover.mesh.position.set((bOpM.min.x + bOpM.max.x) / 2, (bOpM.min.y + bOpM.max.y) / 2, (bOpM.min.z + bOpM.max.z) / 2);
+        }
+        openingHover.mesh.visible = true;
+      } else if (openingHover) {
+        openingHover.mesh.visible = false;
+      }
+      return;
+    }
 
     if (faceLineDrawing) {
       var flmHit = pickPointOnPlane(e, faceLineDrawing.plane);
