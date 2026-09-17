@@ -417,6 +417,8 @@
     transition: opacity 150ms ease;
   }
 
+  .swatch-rail.avoid-properties { top: auto; bottom: 18px; transform: none; }
+
   .swatch-rail.visible { opacity: 1; pointer-events: auto; }
 
   .swatch {
@@ -562,6 +564,8 @@
     color: var(--steel);
   }
   #wallExtrudeBtn { display: block; width: 100%; }
+  .tool-options.panel-right { left: auto; right: 18px; }
+  .tool-options .opt-row input[type="number"].prop-wide { width: 100%; }
 
   .sun-readout {
     margin-top: 10px;
@@ -932,6 +936,9 @@
       <span class="btn-label">New drawing</span>
     </button>
     <span class="tool-sep"></span>
+    <button class="icon-toggle" id="view2DToggle" aria-pressed="false" title="2D plan view: true orthographic top-down, no perspective, for precise drafting (orbit disabled, pan/zoom still work)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 8v8M9 11l3-3 3 3"/></svg>
+    </button>
     <button class="icon-toggle" id="gridToggle" aria-pressed="true" title="Show/hide grid">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
     </button>
@@ -971,6 +978,16 @@
     <div class="opt-row"><label for="wallHeight">Höjd cm</label><input type="number" id="wallHeight" value="250" min="50" max="600" step="5"></div>
     <p class="tool-options-hint">Väggarna ritas platta. Rita klart hela planen, tryck sedan Extrudera väggar (E).</p>
     <button class="preset-btn" id="wallExtrudeBtn" type="button">Extrudera väggar</button>
+  </div>
+
+  <div class="tool-options panel-right" id="propertiesPanel">
+    <h2>Egenskaper</h2>
+    <div class="opt-row"><label for="propWidth">Bredd cm</label><input type="number" id="propWidth" min="2" step="1"></div>
+    <div class="opt-row"><label for="propDepth">Djup cm</label><input type="number" id="propDepth" min="2" step="1"></div>
+    <div class="opt-row"><label for="propHeight">Höjd cm</label><input type="number" id="propHeight" min="2" step="1"></div>
+    <div class="opt-row"><label for="propX">X cm</label><input type="number" id="propX" step="1"></div>
+    <div class="opt-row"><label for="propZ">Z cm</label><input type="number" id="propZ" step="1"></div>
+    <p class="tool-options-hint">X/Z är formens mittpunkt. Tryck Enter eller klicka utanför för att uppdatera.</p>
   </div>
 
   <div class="tool-options" id="openingOptionsPanel">
@@ -1018,9 +1035,12 @@
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
     <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line</span></div>
     <div class="help-row"><kbd>G</kbd><span>Roof: click a flat top, drag up to fold it into a gable roof</span></div>
-    <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only, type a length + Enter for an exact one), click near the start to close it, Esc to stop. Draws flat until extruded</span></div>
+    <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only), click near the start to close it, Esc to stop. Draws flat until extruded</span></div>
+    <div class="help-row"><kbd>Wall + type</kbd><span>A number + Enter = exact length. X;Z + Enter = go to that exact point. @X;Z + Enter = move that far from the last point</span></div>
     <div class="help-row"><kbd>E</kbd><span>Extrude walls: raise every flat wall to the height it was drawn with</span></div>
     <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there, pick which in the panel on the left</span></div>
+    <div class="help-row"><kbd>2D view</kbd><span>Toolbar toggle: true orthographic top-down plan, no perspective skew, for precise drafting (orbit off, pan/zoom still on)</span></div>
+    <div class="help-row"><kbd>Properties panel</kbd><span>Select a plain shape (not one already cut with Subtract): edit its exact width/depth/height/position in cm on the right</span></div>
     <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
     <div class="help-row"><kbd>Library panel</kbd><span>Place reference people, trees and vehicles</span></div>
     <div class="help-row"><kbd>Esc</kbd><span>Cancel a Line or Arc in progress</span></div>
@@ -1108,6 +1128,7 @@
   var scaleBarLineEl = document.getElementById("scaleBarLine");
   var scaleBarLabelEl = document.getElementById("scaleBarLabel");
   var gridToggleEl = document.getElementById("gridToggle");
+  var view2DToggleEl = document.getElementById("view2DToggle");
   var sunToggleEl = document.getElementById("sunToggle");
   var sunPanelEl = document.getElementById("sunPanel");
   var sunLatEl = document.getElementById("sunLat");
@@ -1139,6 +1160,12 @@
   var openingOptionsPanelEl = document.getElementById("openingOptionsPanel");
   var openingPresetDoorEl = document.getElementById("openingPresetDoor");
   var openingPresetWindowEl = document.getElementById("openingPresetWindow");
+  var propertiesPanelEl = document.getElementById("propertiesPanel");
+  var propWidthEl = document.getElementById("propWidth");
+  var propDepthEl = document.getElementById("propDepth");
+  var propHeightEl = document.getElementById("propHeight");
+  var propXEl = document.getElementById("propX");
+  var propZEl = document.getElementById("propZ");
 
   var PALETTE = [
     "#f4f0e6", "#e6ddc8", "#ffffff", "#d3c6a8", "#b6a888", "#8a7d64",
@@ -1337,7 +1364,11 @@
 
   // ---- Three.js scene ----
   var scene = new THREE.Scene();
-  var camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.05, 500);
+  var perspectiveCamera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.05, 500);
+  var orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.05, 500);
+  var camera = perspectiveCamera;
+  var is2D = false;
+  var orthoHalfHeight = 10;
   var renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1878,16 +1909,46 @@
     scaleBarLabelEl.textContent = formatMeters(lengthM);
   }
 
+  // ---- 2D plan view: a true orthographic top-down camera (no perspective
+  // skew, straight overhead) for precise drafting, toggled independently of
+  // the normal orbit/perspective rig. Orbiting (right-drag) is disabled
+  // while active -- a flat plan can't be tilted -- but pan/zoom/every
+  // drawing tool works exactly the same, since Three's raycaster and
+  // .project() both handle an orthographic camera transparently.
+  function updateOrthoFrustum() {
+    var aspect = window.innerWidth / window.innerHeight;
+    var halfH = orthoHalfHeight, halfW = halfH * aspect;
+    orthoCamera.left = -halfW; orthoCamera.right = halfW;
+    orthoCamera.top = halfH; orthoCamera.bottom = -halfH;
+    orthoCamera.updateProjectionMatrix();
+  }
+
   function updateCamera() {
-    var sp = phi < 0.06 ? 0.06 : (phi > Math.PI - 0.06 ? Math.PI - 0.06 : phi);
-    camera.position.set(
-      target.x + radius * Math.sin(sp) * Math.sin(theta),
-      target.y + radius * Math.cos(sp),
-      target.z + radius * Math.sin(sp) * Math.cos(theta)
-    );
-    camera.lookAt(target);
+    if (is2D) {
+      camera.position.set(target.x, 40, target.z);
+      camera.up.set(0, 0, -1);
+      camera.lookAt(target.x, 0, target.z);
+      updateOrthoFrustum();
+    } else {
+      var sp = phi < 0.06 ? 0.06 : (phi > Math.PI - 0.06 ? Math.PI - 0.06 : phi);
+      camera.position.set(
+        target.x + radius * Math.sin(sp) * Math.sin(theta),
+        target.y + radius * Math.cos(sp),
+        target.z + radius * Math.sin(sp) * Math.cos(theta)
+      );
+      camera.up.set(0, 1, 0);
+      camera.lookAt(target);
+    }
     updateScaleBar();
   }
+
+  function toggle2DView() {
+    is2D = !is2D;
+    camera = is2D ? orthoCamera : perspectiveCamera;
+    view2DToggleEl.setAttribute("aria-pressed", is2D ? "true" : "false");
+    updateCamera();
+  }
+  view2DToggleEl.addEventListener("click", toggle2DView);
   updateCamera();
   updateSun();
 
@@ -1954,7 +2015,53 @@
       hideDims();
     }
   }
-  function setSelection(list) { selection = list.slice(); refreshSelectionOutlines(); hideFaceHighlight(); }
+  // ---- Properties panel: exact numeric edit of a single plain-box volume's
+  // size/position after the fact (a CSG/compound shape has no simple w/d/h
+  // to show, so it's box-only). Values round-trip in centimeters to match
+  // the Wall options panel's units.
+  function updatePropertiesPanel() {
+    var showing = selection.length === 1 && !selection[0].isCompound;
+    if (showing) {
+      var v = selection[0];
+      propWidthEl.value = Math.round(v.mesh.scale.x * 100);
+      propDepthEl.value = Math.round(v.mesh.scale.z * 100);
+      propHeightEl.value = Math.round(v.mesh.scale.y * 100);
+      propXEl.value = Math.round(v.mesh.position.x * 100);
+      propZEl.value = Math.round(v.mesh.position.z * 100);
+      propertiesPanelEl.classList.add("visible");
+    } else {
+      propertiesPanelEl.classList.remove("visible");
+    }
+    // the swatch rail (top-right, vertically centered) would otherwise sit
+    // right under this panel whenever Select also has a face highlighted
+    swatchRailEl.classList.toggle("avoid-properties", showing);
+  }
+  function commitPropertiesEdit() {
+    if (selection.length !== 1 || selection[0].isCompound) return;
+    var v = selection[0];
+    if (isLocked(v)) { updatePropertiesPanel(); return; }
+    var w = parseFloat(propWidthEl.value) / 100;
+    var d = parseFloat(propDepthEl.value) / 100;
+    var h = parseFloat(propHeightEl.value) / 100;
+    var x = parseFloat(propXEl.value) / 100;
+    var z = parseFloat(propZEl.value) / 100;
+    if (![w, d, h].every(function (n) { return isFinite(n) && n > 0.02; }) || !isFinite(x) || !isFinite(z)) {
+      updatePropertiesPanel();
+      return;
+    }
+    snapshot();
+    v.mesh.scale.set(w, h, d);
+    v.mesh.position.x = x;
+    v.mesh.position.z = z;
+    v.isFlatPlan = false;
+    persistState();
+    updatePropertiesPanel();
+  }
+  [propWidthEl, propDepthEl, propHeightEl, propXEl, propZEl].forEach(function (el) {
+    el.addEventListener("change", commitPropertiesEdit);
+  });
+
+  function setSelection(list) { selection = list.slice(); refreshSelectionOutlines(); hideFaceHighlight(); updatePropertiesPanel(); }
   function clearSelection() { setSelection([]); }
 
   // single-face highlight: shown in the Select tool when a click lands on one
@@ -2031,6 +2138,7 @@
     var i = selection.indexOf(vol);
     if (i >= 0) selection.splice(i, 1); else selection.push(vol);
     refreshSelectionOutlines();
+    updatePropertiesPanel();
   }
   function selectSingle(vol) {
     if (vol && vol.groupId) { setSelection(groupMembers(vol.groupId)); return; }
@@ -2099,7 +2207,7 @@
     var i = volumes.indexOf(vol);
     if (i >= 0) volumes.splice(i, 1);
     var si = selection.indexOf(vol);
-    if (si >= 0) { selection.splice(si, 1); refreshSelectionOutlines(); }
+    if (si >= 0) { selection.splice(si, 1); refreshSelectionOutlines(); updatePropertiesPanel(); }
   }
 
   function clearAll() {
@@ -2442,7 +2550,8 @@
   function vcbHintFor() {
     if (drawing) return "Mått, BxD";
     if (pulling) return pulling.axis === "y" ? "Höjd" : "Längd";
-    if (lineDrawing || faceLineDrawing || wallDrawing) return "Längd";
+    if (wallDrawing) return "Längd, eller X;Z / @X;Z";
+    if (lineDrawing || faceLineDrawing) return "Längd";
     return "Mått";
   }
 
@@ -2485,6 +2594,23 @@
     if (!isFinite(w) || !isFinite(d)) return null;
     return { w: unitToMeters(w, eu.unit), d: unitToMeters(d, eu.unit) };
   }
+  // Coordinate entry for Wall: "X;Z" jumps to an absolute point, "@X;Z" moves
+  // that far from the last point -- semicolon (not comma) separates the two
+  // numbers so a decimal comma in either one (e.g. "2,5;-1") still works,
+  // matching how the rest of the VCB already accepts a comma decimal.
+  function parseVcbCoord(raw) {
+    var s = raw.trim();
+    if (s.indexOf(";") === -1) return null;
+    var relative = s.charAt(0) === "@";
+    if (relative) s = s.slice(1);
+    var eu = extractUnitAndBody(s);
+    var parts = eu.body.split(";");
+    if (parts.length !== 2) return null;
+    var x = parseFloat(parts[0].replace(",", "."));
+    var z = parseFloat(parts[1].replace(",", "."));
+    if (!isFinite(x) || !isFinite(z)) return null;
+    return { x: unitToMeters(x, eu.unit), z: unitToMeters(z, eu.unit), relative: relative };
+  }
 
   function applyVcbCommit() {
     var buf = vcbBuffer;
@@ -2509,8 +2635,13 @@
       var flen = parseVcbSingle(buf);
       if (flen !== null && flen > 0) applyFaceLineSegmentExact(flen);
     } else if (wallDrawing) {
-      var wlen = parseVcbSingle(buf);
-      if (wlen !== null && wlen > 0) applyWallSegmentExact(wlen);
+      var coord = parseVcbCoord(buf);
+      if (coord) {
+        applyWallCoordExact(coord);
+      } else {
+        var wlen = parseVcbSingle(buf);
+        if (wlen !== null && wlen > 0) applyWallSegmentExact(wlen);
+      }
     }
   }
 
@@ -2539,7 +2670,7 @@
     tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
-    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical; type a number + Enter for an exact length), click near the start to close the loop. Walls draw flat until you extrude them (E)",
+    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E)",
     opening: "Click a wall to cut a door or window there (pick which on the left)"
   };
 
@@ -2741,7 +2872,7 @@
     if (e.key === "Shift") { inferenceRuntime.shiftHeld = true; return; }
 
     if (vcbSupportedSession()) {
-      if (/^[0-9.,\-xXmMcC]$/.test(e.key)) {
+      if (/^[0-9.,\-xXmMcC;@]$/.test(e.key)) {
         e.preventDefault();
         vcbBuffer += e.key;
         vcbActive = true;
@@ -2963,6 +3094,33 @@
     } else {
       createWallSegment(origin, newPoint);
       wallDrawing.points.push(newPoint);
+      setLinePositions(wallDrawing.line, wallDrawing.points, 0.03);
+    }
+  }
+
+  // "X;Z" / "@X;Z" coordinate entry for the in-progress wall. Rejected (not
+  // silently snapped) when both axes move at once, since a wall segment has
+  // to stay horizontal/vertical to be representable as a plain box -- see
+  // the note above createWallSegment.
+  function applyWallCoordExact(coord) {
+    if (!wallDrawing) return;
+    var origin = wallDrawing.points[wallDrawing.points.length - 1];
+    var target = coord.relative
+      ? new THREE.Vector3(origin.x + coord.x, 0, origin.z + coord.z)
+      : new THREE.Vector3(coord.x, 0, coord.z);
+    var dx = target.x - origin.x, dz = target.z - origin.z;
+    if (Math.abs(dx) > 1e-4 && Math.abs(dz) > 1e-4) {
+      setHint("Väggar måste vara raka – ange bara X eller bara Z, inte båda");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2600);
+      return;
+    }
+    var first = wallDrawing.points[0];
+    if (wallDrawing.points.length >= 3 && first.distanceTo(target) < 0.35) {
+      createWallSegment(origin, first);
+      cancelWallDrawing();
+    } else {
+      createWallSegment(origin, target);
+      wallDrawing.points.push(target);
       setLinePositions(wallDrawing.line, wallDrawing.points, 0.03);
     }
   }
@@ -4924,7 +5082,7 @@
   function panCamera(dx, dy) {
     var right = new THREE.Vector3(); camera.getWorldDirection(right); right.cross(camera.up).normalize();
     var up = camera.up.clone();
-    var scale = radius * 0.0018;
+    var scale = (is2D ? orthoHalfHeight : radius) * 0.0018;
     target.addScaledVector(right, -dx * scale);
     target.addScaledVector(up, dy * scale);
   }
@@ -4935,7 +5093,7 @@
       if (panning) {
         panCamera(dx, dy);
         orbitStart.x = e.clientX; orbitStart.y = e.clientY;
-      } else if (Math.abs(dx) + Math.abs(dy) > 2) {
+      } else if (!is2D && Math.abs(dx) + Math.abs(dy) > 2) {
         theta = startTheta - dx * 0.008;
         phi = startPhi - dy * 0.008;
       }
@@ -5446,14 +5604,20 @@
   dom.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   dom.addEventListener("wheel", function (e) {
     e.preventDefault();
-    radius *= Math.pow(1.0015, e.deltaY);
-    radius = Math.max(2.5, Math.min(90, radius));
+    if (is2D) {
+      orthoHalfHeight *= Math.pow(1.0015, e.deltaY);
+      orthoHalfHeight = Math.max(0.3, Math.min(150, orthoHalfHeight));
+    } else {
+      radius *= Math.pow(1.0015, e.deltaY);
+      radius = Math.max(2.5, Math.min(90, radius));
+    }
     updateCamera();
   }, { passive: false });
 
   window.addEventListener("resize", function () {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    perspectiveCamera.aspect = window.innerWidth / window.innerHeight;
+    perspectiveCamera.updateProjectionMatrix();
+    if (is2D) updateOrthoFrustum();
     renderer.setSize(window.innerWidth, window.innerHeight);
     updateScaleBar();
   });
