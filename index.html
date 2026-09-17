@@ -105,7 +105,7 @@
   }
 
   #stage.tool-rectangle canvas,
-  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas, #stage.tool-wall canvas { cursor: crosshair; }
+  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas, #stage.tool-wall canvas, #stage.tool-scaleimage canvas { cursor: crosshair; }
   #stage.tool-pan canvas { cursor: grab; }
   #stage.tool-pan.dragging canvas { cursor: grabbing; }
   #stage.tool-paint canvas, #stage.tool-opening canvas { cursor: pointer; }
@@ -923,6 +923,20 @@
       <span class="btn-label">Import</span>
     </button>
     <span class="tool-sep"></span>
+    <input type="file" id="importImageInput" accept="image/*" style="display:none;">
+    <button class="tool-btn" data-action="importimage" title="Import a reference image onto the ground, on the active layer, to trace over">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="1.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M3 15l5-4 4 3.5 3-2.5 6 5"/></svg>
+      <span class="btn-label">Image</span>
+    </button>
+    <button class="tool-btn" data-tool="scaleimage" aria-pressed="false" title="Scale image: click two points on the image, then type the real distance between them + Enter">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4" stroke-dasharray="2.2 2.2"/><circle cx="4" cy="20" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="currentColor" stroke="none"/><path d="M14 4h6v6M10 20H4v-6"/></svg>
+      <span class="btn-label">Scale image</span>
+    </button>
+    <button class="tool-btn" data-action="removeimage" title="Remove the reference image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="1.5"/><path d="M8 20h8M9 8l6 6M15 8l-6 6"/></svg>
+      <span class="btn-label">Remove image</span>
+    </button>
+    <span class="tool-sep"></span>
     <button class="tool-btn" data-action="undo" title="Undo (Cmd/Ctrl+Z)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7L3 11l4 4"/><path d="M3 11h11a6 6 0 010 12h-2"/></svg>
       <span class="btn-label">Undo</span>
@@ -1047,6 +1061,9 @@
     <div class="help-row"><kbd>Wall settings icon</kbd><span>Thickness/height and the Extrude walls button, open on demand so it never sits over the canvas while you draw</span></div>
     <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there</span></div>
     <div class="help-row"><kbd>Opening settings icon</kbd><span>Choose Door or Window, open on demand</span></div>
+    <div class="help-row"><kbd>Image</kbd><span>Import a reference image flat on the ground, on the active layer -- put it on its own layer, then draw walls on a different layer on top of it</span></div>
+    <div class="help-row"><kbd>Scale image</kbd><span>Click two points on the image, type the real distance between them + Enter, to calibrate it to true scale</span></div>
+    <div class="help-row"><kbd>Remove image</kbd><span>Removes the reference image once you're done tracing it (it isn't saved with the drawing)</span></div>
     <div class="help-row"><kbd>2D view</kbd><span>Toolbar toggle: true orthographic top-down plan, no perspective skew, for precise drafting (orbit off, pan/zoom still on)</span></div>
     <div class="help-row"><kbd>Properties panel</kbd><span>Select a plain shape (not one already cut with Subtract): edit its exact width/depth/height/position in cm on the right</span></div>
     <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
@@ -2002,6 +2019,74 @@
 
   var volumes = []; // { mesh, color, layerId, groupId }
 
+  // ---- Reference image: a flat photo/plan on the ground to trace walls
+  // over, then throw away. Single image at a time (importing a new one
+  // replaces it), on the active layer like any other object, but NOT part
+  // of the save/undo system -- a real scanned floor plan can be several MB
+  // as a data URL, and the whole drawing's localStorage save already goes
+  // through the same JSON blob (see persistState's own comment on quota),
+  // so folding a multi-MB image into that risks silently breaking the
+  // save of the actual walls too. Lost on reload by design; re-import and
+  // re-calibrate if you come back to it later.
+  var imagePlaneGeo = new THREE.PlaneGeometry(1, 1);
+  imagePlaneGeo.rotateX(-Math.PI / 2);
+  var referenceImage = null; // { mesh, layerId }
+  function removeReferenceImage() {
+    if (!referenceImage) return;
+    scene.remove(referenceImage.mesh);
+    referenceImage.mesh.material.map.dispose();
+    referenceImage.mesh.material.dispose();
+    referenceImage = null;
+  }
+  function importReferenceImage(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        if (referenceImage && !window.confirm("Ersätt den nuvarande referensbilden?")) return;
+        removeReferenceImage();
+        var texture = new THREE.Texture(img);
+        texture.needsUpdate = true;
+        var mat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
+        var mesh = new THREE.Mesh(imagePlaneGeo, mat);
+        var widthM = 10;
+        var depthM = widthM * (img.height / img.width);
+        mesh.scale.set(widthM, 1, depthM);
+        mesh.position.set(target.x, 0.005, target.z);
+        scene.add(mesh);
+        referenceImage = { mesh: mesh, layerId: activeLayerId };
+        applyLayerVisibility();
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }
+  function imageHit(e) {
+    if (!referenceImage || !referenceImage.mesh.visible) return null;
+    updatePointer(e);
+    raycaster.setFromCamera(pointerNDC, camera);
+    var hits = raycaster.intersectObject(referenceImage.mesh, false);
+    return hits.length ? hits[0] : null;
+  }
+  var imageScaleDrawing = null; // { a: Vector3, b: Vector3|null, line }
+  function cancelImageScaleDrawing() {
+    if (!imageScaleDrawing) return;
+    scene.remove(imageScaleDrawing.line);
+    imageScaleDrawing.line.geometry.dispose();
+    imageScaleDrawing = null;
+    hideDims();
+  }
+  function applyImageScaleExact(realLen) {
+    if (!imageScaleDrawing || !imageScaleDrawing.b || !referenceImage) { cancelImageScaleDrawing(); return; }
+    var currentLen = imageScaleDrawing.a.distanceTo(imageScaleDrawing.b);
+    if (currentLen > 1e-4) {
+      var factor = realLen / currentLen;
+      referenceImage.mesh.scale.x *= factor;
+      referenceImage.mesh.scale.z *= factor;
+    }
+    cancelImageScaleDrawing();
+  }
+
   // ---- Layers & groups ----
   var layers = [{ id: 1, name: "Layer 1", visible: true, locked: false }];
   var nextLayerId = 2;
@@ -2017,7 +2102,10 @@
     return g ? g.locked : false;
   }
   function activeLayer() { return layers.filter(function (l) { return l.id === activeLayerId; })[0] || layers[0]; }
-  function applyLayerVisibility() { volumes.forEach(function (v) { v.mesh.visible = layerOf(v).visible; }); }
+  function applyLayerVisibility() {
+    volumes.forEach(function (v) { v.mesh.visible = layerOf(v).visible; });
+    if (referenceImage) referenceImage.mesh.visible = layerOf(referenceImage).visible;
+  }
   function groupMembers(gid) { return volumes.filter(function (v) { return v.groupId === gid; }); }
 
   // transient edge helper for the volume currently being drawn/pulled
@@ -2588,13 +2676,14 @@
   var vcbActive = false;
 
   function vcbSupportedSession() {
-    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing);
+    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing || (imageScaleDrawing && imageScaleDrawing.b));
   }
 
   function vcbHintFor() {
     if (drawing) return "Mått, BxD";
     if (pulling) return pulling.axis === "y" ? "Höjd" : "Längd";
     if (wallDrawing) return "Längd, eller X;Z / @X;Z";
+    if (imageScaleDrawing && imageScaleDrawing.b) return "Verklig längd";
     if (lineDrawing || faceLineDrawing) return "Längd";
     return "Mått";
   }
@@ -2686,6 +2775,9 @@
         var wlen = parseVcbSingle(buf);
         if (wlen !== null && wlen > 0) applyWallSegmentExact(wlen);
       }
+    } else if (imageScaleDrawing && imageScaleDrawing.b) {
+      var realLen = parseVcbSingle(buf);
+      if (realLen !== null && realLen > 0) applyImageScaleExact(realLen);
     }
   }
 
@@ -2715,7 +2807,8 @@
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
     wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E). Thickness/height: the wall icon in the toolbar",
-    opening: "Click a wall to cut a door or window there. Door/Window choice: the opening icon in the toolbar"
+    opening: "Click a wall to cut a door or window there. Door/Window choice: the opening icon in the toolbar",
+    scaleimage: "Click two points on the reference image, then type the real distance between them + Enter"
   };
 
   function setTool(next) {
@@ -2729,6 +2822,7 @@
     if (next !== "offset") cancelOffsetDrawing();
     if (next !== "wall") cancelWallDrawing();
     if (next !== "opening") cancelOpeningPreview();
+    if (next !== "scaleimage") cancelImageScaleDrawing();
     if (next !== "place-prop") armedProp = null;
     hideInferenceOverlay();
     tool = next;
@@ -2761,6 +2855,16 @@
   document.querySelector('[data-action="import"]').addEventListener("click", function () {
     importErrorEl.textContent = "";
     importPanelEl.classList.add("visible");
+  });
+  var importImageInputEl = document.getElementById("importImageInput");
+  document.querySelector('[data-action="importimage"]').addEventListener("click", function () { importImageInputEl.click(); });
+  importImageInputEl.addEventListener("change", function () {
+    if (importImageInputEl.files && importImageInputEl.files[0]) importReferenceImage(importImageInputEl.files[0]);
+    importImageInputEl.value = "";
+  });
+  document.querySelector('[data-action="removeimage"]').addEventListener("click", function () {
+    if (!referenceImage) return;
+    if (window.confirm("Ta bort referensbilden?")) { if (tool === "scaleimage") cancelImageScaleDrawing(); removeReferenceImage(); }
   });
   document.querySelector('[data-action="undo"]').addEventListener("click", undo);
   document.querySelector('[data-action="clear"]').addEventListener("click", function () {
@@ -2974,7 +3078,7 @@
     else if (e.key.toLowerCase() === "u") groupSelected();
     else if (e.key.toLowerCase() === "k") toggleLockSelectedGroup();
     else if (e.key.toLowerCase() === "t") toggleToolbar();
-    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); cancelWallDrawing(); }
+    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); cancelWallDrawing(); cancelImageScaleDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if (e.key === "Enter" && faceLineDrawing && faceLineDrawing.points.length >= 3) finalizeFaceLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
@@ -3023,6 +3127,7 @@
   function volumeOf(mesh) { return volumes.filter(function (v) { return v.mesh === mesh; })[0]; }
 
   var orbiting = false, panning = false, orbitStart = { x: 0, y: 0 }, startTheta = 0, startPhi = 0;
+  var shiftClickCandidate = null; // {x,y} screen pos of a shift+left-click-down, resolved to a selection toggle on pointerup if it turns out not to have been a pan-drag
   var drawing = null;      // { startX, startZ, vol }
   var pulling = null;      // { vol, plane, axis, sign, fixedPos, facePos0 }
   var scaling = null;      // { vol, plane, axis, sign, normal, hitPoint, sizeBefore, scaleBefore, posBefore, anchorWorld, anchorSide }
@@ -4687,6 +4792,13 @@
     if (e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey)) {
       orbiting = e.button === 2;
       panning = e.button === 1 || (e.button === 0 && e.shiftKey);
+      // Shift-drag is documented as an alternative to middle-drag for
+      // panning, but shift-click (no drag) is *also* documented as
+      // "add to selection" for Select/Move -- this branch used to treat
+      // every shift+left-click as a pan and return before either tool's
+      // own shift-click handling could ever run. Resolved on pointerup by
+      // checking whether the pointer actually moved.
+      shiftClickCandidate = (e.button === 0 && e.shiftKey) ? { x: e.clientX, y: e.clientY } : null;
       orbitStart.x = e.clientX; orbitStart.y = e.clientY;
       startTheta = theta; startPhi = phi;
       stageEl.classList.add("dragging");
@@ -5133,6 +5245,29 @@
         return;
       }
       placeOpening(volOp, hitOp);
+    } else if (tool === "scaleimage") {
+      if (!referenceImage) {
+        setHint("Importera en bild först");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
+      if (isLocked(referenceImage)) {
+        setHint("Bildens lager är låst");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+        return;
+      }
+      var imHitDown = imageHit(e);
+      if (!imHitDown) return;
+      if (!imageScaleDrawing) {
+        var scLine = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
+        scene.add(scLine);
+        imageScaleDrawing = { a: imHitDown.point.clone(), b: null, line: scLine };
+        setLinePositions(scLine, [imageScaleDrawing.a], 0.02);
+      } else if (!imageScaleDrawing.b) {
+        imageScaleDrawing.b = imHitDown.point.clone();
+        setLinePositions(imageScaleDrawing.line, [imageScaleDrawing.a, imageScaleDrawing.b], 0.02);
+        showDims(imageScaleDrawing.a.distanceTo(imageScaleDrawing.b), 0, 0);
+      }
     } else if (tool === "place-prop" && armedProp) {
       var pp = propSurfaceHit(e);
       if (!pp) return;
@@ -5173,6 +5308,15 @@
         if (wmDist > 1e-4) wallDrawing.lastDir = wmPoint.clone().sub(wmOrigin).divideScalar(wmDist);
         setLinePositions(wallDrawing.line, wallDrawing.points.concat([wmPoint]), 0.03);
         showDims(wmDist, wallThicknessM, wallHeightM);
+      }
+      return;
+    }
+
+    if (imageScaleDrawing && !imageScaleDrawing.b) {
+      var imMoveHit = imageHit(e);
+      if (imMoveHit) {
+        setLinePositions(imageScaleDrawing.line, [imageScaleDrawing.a, imMoveHit.point], 0.02);
+        showDims(imageScaleDrawing.a.distanceTo(imMoveHit.point), 0, 0);
       }
       return;
     }
@@ -5475,6 +5619,15 @@
     if (orbiting || panning) {
       orbiting = false; panning = false;
       stageEl.classList.remove("dragging");
+    }
+    if (shiftClickCandidate) {
+      var scDist = Math.hypot(e.clientX - shiftClickCandidate.x, e.clientY - shiftClickCandidate.y);
+      shiftClickCandidate = null;
+      if (scDist < 4 && (tool === "select" || tool === "move")) {
+        var scHit = volumeHit(e);
+        var scVol = scHit ? volumeOf(scHit.object) : null;
+        if (scVol) toggleInSelection(scVol);
+      }
     }
     if (faceCircleDrawing) {
       finalizeFaceCircleDrawing();
