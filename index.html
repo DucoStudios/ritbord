@@ -1739,9 +1739,10 @@
   // (called once per pointerdown/drag-start, not per pointermove) since a
   // per-frame full-scene scan would be wasteful.
   function getSceneEdgeSamples(excludeVol) {
+    var excludeList = Array.isArray(excludeVol) ? excludeVol : (excludeVol ? [excludeVol] : []);
     var edges = [];
     volumes.forEach(function (v) {
-      if (v === excludeVol || !layerOf(v).visible) return;
+      if (excludeList.indexOf(v) !== -1 || !layerOf(v).visible) return;
       if (!v.isCompound) {
         var bb = new THREE.Box3().setFromObject(v.mesh);
         var corners = [];
@@ -2370,6 +2371,41 @@
     } else {
       hideDims();
     }
+    updateCornerMarkers();
+  }
+
+  // Small square handles at every corner of the current selection's bounding
+  // box (per shape, so duplicate corners where two selected shapes touch
+  // just overlap harmlessly) -- lets you see which points are "grabbable"
+  // with Move, and which one is being tracked for corner-to-corner snapping
+  // (see the moving.grabCorner0 logic) before you even start dragging.
+  // Reuses a pool of meshes rather than recreating them every call, since
+  // this also gets called every frame of an active Move drag.
+  var cornerMarkerGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+  var cornerMarkerMat = new THREE.MeshBasicMaterial({ color: 0xc1601f, depthTest: false });
+  var cornerMarkers = [];
+  function updateCornerMarkers() {
+    var corners = [];
+    if ((tool === "select" || tool === "move") && selection.length) {
+      selection.forEach(function (v) {
+        var bb = new THREE.Box3().setFromObject(v.mesh);
+        [bb.min.x, bb.max.x].forEach(function (x) {
+          [bb.min.y, bb.max.y].forEach(function (y) {
+            [bb.min.z, bb.max.z].forEach(function (z) { corners.push(new THREE.Vector3(x, y, z)); });
+          });
+        });
+      });
+    }
+    while (cornerMarkers.length < corners.length) {
+      var m = new THREE.Mesh(cornerMarkerGeo, cornerMarkerMat);
+      m.renderOrder = 996;
+      scene.add(m);
+      cornerMarkers.push(m);
+    }
+    while (cornerMarkers.length > corners.length) {
+      scene.remove(cornerMarkers.pop());
+    }
+    corners.forEach(function (p, i) { cornerMarkers[i].position.copy(p); });
   }
   // ---- Properties panel: exact numeric edit of a single plain-box volume's
   // size/position after the fact (a CSG/compound shape has no simple w/d/h
@@ -3136,6 +3172,7 @@
     stageEl.className = "tool-" + tool;
     toolButtons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tool === tool ? "true" : "false"); });
     updateSwatchRailVisibility();
+    updateCornerMarkers();
     setHint(HINTS[tool] || "");
   }
   toolButtons.forEach(function (b) {
@@ -5369,8 +5406,27 @@
         var gp = groundHit(e);
         if (gp) {
           snapshot();
+          // Track whichever corner of the whole selection's bounding box is
+          // closest (in plan, X/Z) to where it was grabbed -- this is the
+          // corner that gets a chance to snap onto another shape's corner/
+          // edge below, the way SketchUp's own Move does when stacking one
+          // component onto another (its "Slutpunkt" endpoint marker).
+          var moveBox = new THREE.Box3();
+          selection.forEach(function (v) { moveBox.union(new THREE.Box3().setFromObject(v.mesh)); });
+          var moveCorners = [];
+          [moveBox.min.x, moveBox.max.x].forEach(function (x) {
+            [moveBox.min.y, moveBox.max.y].forEach(function (y) {
+              [moveBox.min.z, moveBox.max.z].forEach(function (z) { moveCorners.push(new THREE.Vector3(x, y, z)); });
+            });
+          });
+          var grabCorner0 = moveCorners[0], bestGrabDist = Infinity;
+          moveCorners.forEach(function (c) {
+            var d = Math.hypot(c.x - gp.x, c.z - gp.z);
+            if (d < bestGrabDist) { bestGrabDist = d; grabCorner0 = c; }
+          });
           moving = {
             startPoint: gp,
+            grabCorner0: grabCorner0,
             items: selection.map(function (v) { return { vol: v, x0: v.mesh.position.x, z0: v.mesh.position.z }; })
           };
           renderer.domElement.setPointerCapture(e.pointerId);
@@ -5982,16 +6038,36 @@
     if (moving) {
       var gp2Raw = groundHit(e);
       if (!gp2Raw) return;
-      // moving a whole selection: only axis-lock is meaningful here (nudge
-      // strictly along X or Z), point/length snap would need to reason about
-      // the moved object's own corners rather than the cursor's pick point.
+      // Cursor-based point/length snap is disabled here (allowPointSnap/
+      // allowLengthMatch: false) since the cursor's own ground pick point
+      // isn't what should snap -- the moved object's own tracked corner is.
+      // Axis-lock (nudge strictly along X or Z) still comes from this call.
       var gp2 = computeEffectivePoint(moving.startPoint, gp2Raw, { allowPointSnap: false, allowLengthMatch: false });
       var dx2 = gp2.x - moving.startPoint.x, dz2 = gp2.z - moving.startPoint.z;
+
+      // Corner-to-corner snap: where would the tracked corner land with this
+      // delta, and is that close to some other shape's corner/edge? If so,
+      // nudge the delta that last little bit so the corner lands exactly
+      // there -- the same "Slutpunkt" (endpoint) snap SketchUp shows while
+      // dragging one component onto another.
+      var candidateCorner = new THREE.Vector3(moving.grabCorner0.x + dx2, moving.grabCorner0.y, moving.grabCorner0.z + dz2);
+      var movedVolsForSnap = moving.items.map(function (it) { return it.vol; });
+      var cornerSnap = findPointSnap(candidateCorner, getSceneEdgeSamples(movedVolsForSnap));
+      if (cornerSnap) {
+        dx2 += cornerSnap.point.x - candidateCorner.x;
+        dz2 += cornerSnap.point.z - candidateCorner.z;
+        snapDotMesh.position.copy(cornerSnap.point);
+        snapDotMesh.material.color.setHex(POINT_SNAP_COLOR[cornerSnap.type]);
+        snapDotMesh.visible = true;
+        showInferenceLabel(cornerSnap.type === "endpoint" ? "Ändpunkt" : "Mittpunkt", POINT_SNAP_COLOR[cornerSnap.type]);
+      }
+
       moving.items.forEach(function (it) {
         it.vol.mesh.position.x = it.x0 + dx2;
         it.vol.mesh.position.z = it.z0 + dz2;
       });
       selectionOutlines.forEach(function (o) { o.update(); });
+      updateCornerMarkers();
       return;
     }
 
@@ -6158,6 +6234,7 @@
     if (moving) {
       snapMovedGroupOntoSurfaceBelow(moving.items.map(function (it) { return it.vol; }));
       selectionOutlines.forEach(function (o) { o.update(); });
+      updateCornerMarkers();
       moving = null;
       hideInferenceOverlay();
     }
