@@ -2914,25 +2914,15 @@
   // original. Offset by a fixed 0.4m so the copy never lands exactly on
   // top of the original and is immediately visible/grabbable with Move.
   var DUPLICATE_OFFSET = 0.4;
-  function duplicateSelected() {
-    if (!selection.length) {
-      setHint("Select something first to duplicate it");
-      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
-      return;
-    }
-    snapshot();
+  // Clones a set of volumes at their exact current position/geometry
+  // (offset 0,0) preserving relative group membership under fresh group
+  // id(s) -- the shared primitive behind both Duplicate (which then nudges
+  // the clone by DUPLICATE_OFFSET) and Move-with-copy (which drags the
+  // clone away from the untouched original instead).
+  function cloneVolumesInPlace(vols) {
     var groupIdMap = {};
-    var newSelection = selection.map(function (v) {
+    var newVols = vols.map(function (v) {
       var desc = describeVolume(v);
-      if (desc.kind === "csg") {
-        for (var i = 0; i < desc.positions.length; i += 3) {
-          desc.positions[i] += DUPLICATE_OFFSET;
-          desc.positions[i + 2] += DUPLICATE_OFFSET;
-        }
-      } else {
-        desc.x += DUPLICATE_OFFSET;
-        desc.z += DUPLICATE_OFFSET;
-      }
       var newVol = restoreVolume(desc);
       if (v.groupId) {
         if (!groupIdMap[v.groupId]) groupIdMap[v.groupId] = nextGroupId++;
@@ -2946,9 +2936,60 @@
       var oldGroup = groups.filter(function (g) { return g.id == oldId; })[0];
       groups.push({ id: groupIdMap[oldId], locked: oldGroup ? oldGroup.locked : false });
     });
+    return newVols;
+  }
+
+  function duplicateSelected() {
+    if (!selection.length) {
+      setHint("Select something first to duplicate it");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+      return;
+    }
+    snapshot();
+    var newSelection = cloneVolumesInPlace(selection);
+    newSelection.forEach(function (v) {
+      if (v.isCompound) {
+        var pos = v.mesh.geometry.attributes.position;
+        for (var i = 0; i < pos.count; i++) {
+          pos.setX(i, pos.getX(i) + DUPLICATE_OFFSET);
+          pos.setZ(i, pos.getZ(i) + DUPLICATE_OFFSET);
+        }
+        pos.needsUpdate = true;
+        v.mesh.geometry.computeBoundingSphere();
+      } else {
+        v.mesh.position.x += DUPLICATE_OFFSET;
+        v.mesh.position.z += DUPLICATE_OFFSET;
+      }
+    });
     setSelection(newSelection);
     setHint("Duplicated " + newSelection.length + " shape" + (newSelection.length === 1 ? "" : "s"));
     setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+    persistState();
+  }
+
+  // ---- Move-with-copy array repeat (SketchUp's Ctrl+Move-drag, then type
+  // "5x" to fill five evenly spaced copies at that same spacing) ----
+  var arrayCopyState = null; // { unitVols: [vol,...], dx, dz }
+
+  function createArrayCopies(state, count) {
+    for (var k = 2; k <= count; k++) {
+      var newVols = cloneVolumesInPlace(state.unitVols);
+      var shiftX = (k - 1) * state.dx, shiftZ = (k - 1) * state.dz;
+      newVols.forEach(function (v) {
+        if (v.isCompound) {
+          var pos = v.mesh.geometry.attributes.position;
+          for (var i = 0; i < pos.count; i++) {
+            pos.setX(i, pos.getX(i) + shiftX);
+            pos.setZ(i, pos.getZ(i) + shiftZ);
+          }
+          pos.needsUpdate = true;
+          v.mesh.geometry.computeBoundingSphere();
+        } else {
+          v.mesh.position.x += shiftX;
+          v.mesh.position.z += shiftZ;
+        }
+      });
+    }
     persistState();
   }
 
@@ -3014,7 +3055,7 @@
   var vcbActive = false;
 
   function vcbSupportedSession() {
-    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing || tapeDrawing || (imageScaleDrawing && imageScaleDrawing.b));
+    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing || tapeDrawing || (imageScaleDrawing && imageScaleDrawing.b) || arrayCopyState);
   }
 
   function vcbHintFor() {
@@ -3022,6 +3063,7 @@
     if (pulling) return pulling.axis === "y" ? "Höjd" : "Längd";
     if (wallDrawing) return "Längd, eller X;Z / @X;Z";
     if (imageScaleDrawing && imageScaleDrawing.b) return "Verklig längd";
+    if (arrayCopyState) return "Antal kopior (t.ex. 5x)";
     if (tapeDrawing || lineDrawing || faceLineDrawing) return "Längd";
     return "Mått";
   }
@@ -3056,6 +3098,12 @@
     var n = parseFloat(eu.body.replace(",", "."));
     if (!isFinite(n)) return null;
     return unitToMeters(n, eu.unit);
+  }
+  function parseVcbCount(raw) {
+    var s = raw.trim().toLowerCase().replace(/x/g, "");
+    var n = parseInt(s, 10);
+    if (!isFinite(n) || n < 1) return null;
+    return Math.min(n, 200);
   }
   function parseVcbPair(raw) {
     var eu = extractUnitAndBody(raw);
@@ -3119,6 +3167,16 @@
     } else if (tapeDrawing) {
       var tapeLen = parseVcbSingle(buf);
       if (tapeLen !== null && tapeLen > 0) applyTapeExact(tapeLen);
+    } else if (arrayCopyState) {
+      var count = parseVcbCount(buf);
+      var acs = arrayCopyState;
+      arrayCopyState = null;
+      if (count && count > 1) {
+        snapshot();
+        createArrayCopies(acs, count);
+        setHint(count + " kopior utplacerade");
+        setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+      }
     }
   }
 
@@ -3139,7 +3197,7 @@
     rotate: "Drag a shape sideways to turn it (snaps to 90°), drag a figure/tree/car to face it any direction",
     pan: "Drag anywhere to move the view",
     roof: "Click the flat top of a shape, drag up to fold it into a gable roof",
-    move: "Drag a shape or a placed figure to move it (figures can stand on any floor), shift-click selects multiple shapes",
+    move: "Drag a shape or a placed figure to move it (figures can stand on any floor), shift-click selects multiple shapes, Ctrl/Cmd-drag leaves a copy behind then type a number + Enter for an evenly spaced row",
     paint: "Click a shape, then pick a color on the right",
     line: "Click points to sketch a shape, click near the start (or press Enter) to close it",
     circle: "Drag from the center to set the radius",
@@ -3155,6 +3213,7 @@
 
   function setTool(next) {
     if (vcbActive) cancelVcb();
+    arrayCopyState = null;
     if (next !== "select") hideFaceHighlight();
     if (next !== "pushpull") clearPendingSketch();
     if (next !== "line") cancelLineDrawing();
@@ -4401,6 +4460,8 @@
     skin: 0xd8b898, hair: 0x4a3728, hat: 0xdcc48a, shirt: 0x8a99a8, pants: 0x4a4f5c,
     dress: 0xb99bb0, treeTrunk: 0x6b4e34, pineGreen: 0x4f7a4a, cypressGreen: 0x3c6b45,
     carBody: 0xb9c2c9, wheel: 0x2b2b2b, dogFur: 0xa9835f,
+    sofaFabric: 0x8a97a3, sofaCushion: 0x6f7f92, woodLight: 0xc9a875, woodDark: 0x6b5138,
+    mattressWhite: 0xf2efe8, pillowWhite: 0xfbfaf6, counterTop: 0x3f3f42, ceramicWhite: 0xf0f2f2,
     spaceshipHull: 0xd7dde2, spaceshipStripe: 0xc23b3b, spaceshipGlass: 0x6fd0e0, spaceshipFlame: 0xf2a33c,
     poolWater: 0x2ea6c9,
     magnetBody: 0xc0392b, magnetPole: 0xe8e8e8,
@@ -4595,6 +4656,201 @@
     var seatBlob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), frameMat);
     seatBlob.position.copy(seat);
     g.add(seatBlob);
+    return finishProp(g);
+  }
+
+  // ---- Furniture, for testing floor plans/room layouts -- same low-poly
+  // primitive style as the people/tree/vehicle props above, sized to real
+  // metric furniture dimensions (double bed 1.6x2.0m, dining table 1.4x0.8m,
+  // etc.) so they read correctly at the same scale as walls/rooms.
+  function buildSofa() {
+    var g = new THREE.Group();
+    var fabricMat = propMat(PROP_COLORS.sofaFabric), cushionMat = propMat(PROP_COLORS.sofaCushion);
+    var base = new THREE.Mesh(boxGeo, fabricMat);
+    base.scale.set(1.7, 0.38, 0.85);
+    base.position.set(0, 0.19, 0);
+    g.add(base);
+    var back = new THREE.Mesh(boxGeo, fabricMat);
+    back.scale.set(1.7, 0.55, 0.18);
+    back.position.set(0, 0.655, -0.335);
+    g.add(back);
+    [-0.76, 0.76].forEach(function (x) {
+      var arm = new THREE.Mesh(boxGeo, fabricMat);
+      arm.scale.set(0.18, 0.5, 0.85);
+      arm.position.set(x, 0.25, 0);
+      g.add(arm);
+    });
+    [-0.4, 0.4].forEach(function (x) {
+      var cushion = new THREE.Mesh(boxGeo, cushionMat);
+      cushion.scale.set(0.7, 0.16, 0.75);
+      cushion.position.set(x, 0.46, 0.02);
+      g.add(cushion);
+    });
+    return finishProp(g);
+  }
+
+  function buildArmchair() {
+    var g = new THREE.Group();
+    var fabricMat = propMat(PROP_COLORS.sofaFabric), cushionMat = propMat(PROP_COLORS.sofaCushion);
+    var base = new THREE.Mesh(boxGeo, fabricMat);
+    base.scale.set(0.75, 0.38, 0.8);
+    base.position.set(0, 0.19, 0);
+    g.add(base);
+    var back = new THREE.Mesh(boxGeo, fabricMat);
+    back.scale.set(0.75, 0.55, 0.18);
+    back.position.set(0, 0.655, -0.31);
+    g.add(back);
+    [-0.38, 0.38].forEach(function (x) {
+      var arm = new THREE.Mesh(boxGeo, fabricMat);
+      arm.scale.set(0.16, 0.48, 0.8);
+      arm.position.set(x, 0.24, 0);
+      g.add(arm);
+    });
+    var cushion = new THREE.Mesh(boxGeo, cushionMat);
+    cushion.scale.set(0.5, 0.16, 0.7);
+    cushion.position.set(0, 0.46, 0.02);
+    g.add(cushion);
+    return finishProp(g);
+  }
+
+  function buildBed() {
+    var g = new THREE.Group();
+    var frameMat = propMat(PROP_COLORS.woodDark), mattressMat = propMat(PROP_COLORS.mattressWhite), pillowMat = propMat(PROP_COLORS.pillowWhite);
+    var frame = new THREE.Mesh(boxGeo, frameMat);
+    frame.scale.set(1.6, 0.28, 2.0);
+    frame.position.set(0, 0.14, 0);
+    g.add(frame);
+    var mattress = new THREE.Mesh(boxGeo, mattressMat);
+    mattress.scale.set(1.54, 0.22, 1.96);
+    mattress.position.set(0, 0.39, 0);
+    g.add(mattress);
+    var headboard = new THREE.Mesh(boxGeo, frameMat);
+    headboard.scale.set(1.6, 0.9, 0.08);
+    headboard.position.set(0, 0.45, -1.04);
+    g.add(headboard);
+    [-0.38, 0.38].forEach(function (x) {
+      var pillow = new THREE.Mesh(boxGeo, pillowMat);
+      pillow.scale.set(0.55, 0.12, 0.4);
+      pillow.position.set(x, 0.56, -0.72);
+      g.add(pillow);
+    });
+    return finishProp(g);
+  }
+
+  function buildTable() {
+    var g = new THREE.Group();
+    var woodMat = propMat(PROP_COLORS.woodLight);
+    var top = new THREE.Mesh(boxGeo, woodMat);
+    top.scale.set(1.4, 0.04, 0.8);
+    top.position.set(0, 0.74, 0);
+    g.add(top);
+    var legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.72, 10);
+    [[-0.62, -0.32], [-0.62, 0.32], [0.62, -0.32], [0.62, 0.32]].forEach(function (p) {
+      var leg = new THREE.Mesh(legGeo, woodMat);
+      leg.position.set(p[0], 0.36, p[1]);
+      g.add(leg);
+    });
+    return finishProp(g);
+  }
+
+  function buildChair() {
+    var g = new THREE.Group();
+    var woodMat = propMat(PROP_COLORS.woodLight);
+    var seat = new THREE.Mesh(boxGeo, woodMat);
+    seat.scale.set(0.42, 0.04, 0.42);
+    seat.position.set(0, 0.45, 0);
+    g.add(seat);
+    var legGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.45, 8);
+    [[-0.17, -0.17], [-0.17, 0.17], [0.17, -0.17], [0.17, 0.17]].forEach(function (p) {
+      var leg = new THREE.Mesh(legGeo, woodMat);
+      leg.position.set(p[0], 0.225, p[1]);
+      g.add(leg);
+    });
+    var back = new THREE.Mesh(boxGeo, woodMat);
+    back.scale.set(0.42, 0.42, 0.04);
+    back.position.set(0, 0.68, -0.19);
+    g.add(back);
+    return finishProp(g);
+  }
+
+  function buildWardrobe() {
+    var g = new THREE.Group();
+    var woodMat = propMat(PROP_COLORS.woodDark);
+    var body = new THREE.Mesh(boxGeo, woodMat);
+    body.scale.set(1.0, 2.0, 0.6);
+    body.position.set(0, 1.0, 0);
+    g.add(body);
+    var seam = new THREE.Mesh(boxGeo, propMat(PROP_COLORS.wheel));
+    seam.scale.set(0.02, 1.9, 0.02);
+    seam.position.set(0, 1.0, 0.31);
+    g.add(seam);
+    [-0.15, 0.15].forEach(function (x) {
+      var handle = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.12, 8), propMat(0xc9c9c9));
+      handle.rotation.z = Math.PI / 2;
+      handle.position.set(x, 1.0, 0.305);
+      g.add(handle);
+    });
+    return finishProp(g);
+  }
+
+  function buildKitchenCounter() {
+    var g = new THREE.Group();
+    var cabinetMat = propMat(PROP_COLORS.woodLight), topMat = propMat(PROP_COLORS.counterTop);
+    var base = new THREE.Mesh(boxGeo, cabinetMat);
+    base.scale.set(2.0, 0.85, 0.6);
+    base.position.set(0, 0.425, 0);
+    g.add(base);
+    var top = new THREE.Mesh(boxGeo, topMat);
+    top.scale.set(2.06, 0.04, 0.64);
+    top.position.set(0, 0.87, 0);
+    g.add(top);
+    return finishProp(g);
+  }
+
+  function buildToilet() {
+    var g = new THREE.Group();
+    var mat = propMat(PROP_COLORS.ceramicWhite);
+    var bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.16, 0.38, 16), mat);
+    bowl.scale.set(1, 1, 1.35);
+    bowl.position.set(0, 0.19, 0.05);
+    g.add(bowl);
+    var seat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 16), propMat(0xffffff));
+    seat.scale.set(1, 1, 1.4);
+    seat.position.set(0, 0.38, 0.05);
+    g.add(seat);
+    var tank = new THREE.Mesh(boxGeo, mat);
+    tank.scale.set(0.4, 0.35, 0.16);
+    tank.position.set(0, 0.6, -0.28);
+    g.add(tank);
+    return finishProp(g);
+  }
+
+  function buildSink() {
+    var g = new THREE.Group();
+    var mat = propMat(PROP_COLORS.ceramicWhite);
+    var pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.72, 12), mat);
+    pedestal.position.set(0, 0.36, 0);
+    g.add(pedestal);
+    var basin = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.22, 0.14, 16), mat);
+    basin.scale.set(1, 1, 0.75);
+    basin.position.set(0, 0.79, 0);
+    g.add(basin);
+    var faucet = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.18, 8), propMat(0xb0b0b0));
+    faucet.position.set(0, 0.95, -0.08);
+    g.add(faucet);
+    return finishProp(g);
+  }
+
+  function buildBathtub() {
+    var g = new THREE.Group();
+    var shell = new THREE.Mesh(boxGeo, propMat(PROP_COLORS.ceramicWhite));
+    shell.scale.set(1.7, 0.55, 0.75);
+    shell.position.set(0, 0.275, 0);
+    g.add(shell);
+    var basin = new THREE.Mesh(boxGeo, propMat(0xdaf1f7));
+    basin.scale.set(1.5, 0.35, 0.55);
+    basin.position.set(0, 0.4, 0);
+    g.add(basin);
     return finishProp(g);
   }
 
@@ -4793,11 +5049,15 @@
   var PROP_BUILDERS = {
     man: buildMan, woman: buildWoman, girl9: buildGirl9, boy5: buildBoy5, girl3: buildGirl3, dog: buildDog,
     pine: buildPineTree, pinuspinea: buildPinusPinea, cypress: buildCypress, car: buildCar, bicycle: buildBicycle,
+    sofa: buildSofa, armchair: buildArmchair, bed: buildBed, table: buildTable, chair: buildChair,
+    wardrobe: buildWardrobe, counter: buildKitchenCounter, toilet: buildToilet, sink: buildSink, bathtub: buildBathtub,
     spaceship: buildSpaceship, poolwater: buildPoolWater, magnet: buildMagnet, helicopter: buildHelicopter, goldstream: buildGoldstreamPlane
   };
   var PROP_LABELS = {
     man: "Man (hat)", woman: "Woman (bun)", girl9: "Girl, 9y", boy5: "Boy, 5y (cap)", girl3: "Girl, 3y", dog: "Dog",
     pine: "Pine tree", pinuspinea: "Pinus pinea", cypress: "Cypress", car: "Car", bicycle: "Bicycle",
+    sofa: "Sofa", armchair: "Armchair", bed: "Bed (double)", table: "Table", chair: "Chair",
+    wardrobe: "Wardrobe", counter: "Kitchen counter", toilet: "Toilet", sink: "Sink", bathtub: "Bathtub",
     spaceship: "Spaceship", poolwater: "Pool water", magnet: "Magnet (large)", helicopter: "Helicopter", goldstream: "Goldstream plane"
   };
   var PROP_ICONS = {
@@ -4812,6 +5072,16 @@
     cypress: '<path d="M12 2c3 4 3 14 0 19-3-5-3-15 0-19z"/>',
     car: '<rect x="3" y="10" width="18" height="6" rx="2.5"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/>',
     bicycle: '<circle cx="6" cy="17" r="3.4"/><circle cx="18" cy="17" r="3.4"/><path d="M6 17l5-9h5l2 5M11 8H8.5M9 17h9"/>',
+    sofa: '<rect x="3" y="11" width="18" height="6" rx="1.5"/><path d="M4 11V8a2 2 0 012-2M20 11V8a2 2 0 00-2-2M3 17v2M21 17v2"/>',
+    armchair: '<rect x="5" y="11" width="14" height="6" rx="1.5"/><path d="M6 11V8a1.5 1.5 0 011.5-1.5h9A1.5 1.5 0 0118 8v3M5 17v2M19 17v2"/>',
+    bed: '<rect x="3" y="12" width="18" height="6" rx="1"/><path d="M3 12V8a1.5 1.5 0 011.5-1.5h4A1.5 1.5 0 0110 8v1M14 9V8a1.5 1.5 0 011.5-1.5h4A1.5 1.5 0 0121 8v4M3 18v2M21 18v2"/>',
+    table: '<rect x="4" y="7" width="16" height="2.2" rx="0.5"/><path d="M6.5 9.2V19M17.5 9.2V19"/>',
+    chair: '<rect x="6" y="11" width="10" height="2" rx="0.4"/><path d="M6 13v6M16 13v6M6 11V5h2v6"/>',
+    wardrobe: '<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M12 3v18M9 12h.01M15 12h.01"/>',
+    counter: '<rect x="3" y="10" width="18" height="3" rx="0.5"/><path d="M4 13v6M20 13v6"/>',
+    toilet: '<path d="M7 12c0-2.5 2.2-4.5 5-4.5s5 2 5 4.5-2.2 4.5-5 4.5-5-2-5-4.5z"/><rect x="8" y="3.5" width="6" height="4" rx="1"/><path d="M8.5 16.2v1.3a3.5 3.5 0 007 0v-1.3"/>',
+    sink: '<ellipse cx="12" cy="8.5" rx="7" ry="2.8"/><path d="M12 8.5v6.5M12 15a4.2 4.2 0 01-4.2 4.2M12 15a4.2 4.2 0 004.2 4.2M9 5.5V4M15 5.5V4"/>',
+    bathtub: '<path d="M3 12h18v2.5a4 4 0 01-4 4H7a4 4 0 01-4-4V12z"/><path d="M3 12a2 2 0 012-2h1M20 12V8.5a3 3 0 00-5.5-1.7"/>',
     spaceship: '<path d="M12 2c2.5 3 3 7 3 10.5L12 16l-3-3.5C9 9 9.5 5 12 2z"/><circle cx="12" cy="9" r="1.4"/><path d="M9 13l-2 4 3-1M15 13l2 4-3-1"/>',
     poolwater: '<path d="M2 9c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M2 14c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M2 19c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
     magnet: '<path d="M6 3v8a6 6 0 0012 0V3"/><path d="M6 3h3M15 3h3M6 8h3M15 8h3"/>',
@@ -5184,6 +5454,7 @@
 
   function onPointerDown(e) {
     if (vcbActive) cancelVcb();
+    arrayCopyState = null;
     if (e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey)) {
       orbiting = e.button === 2;
       panning = e.button === 1 || (e.button === 0 && e.shiftKey);
@@ -5406,6 +5677,12 @@
         var gp = groundHit(e);
         if (gp) {
           snapshot();
+          // Ctrl/Cmd held: SketchUp's Move-with-copy -- the original stays
+          // put, and it's a fresh clone that actually gets dragged, so
+          // releasing with no further action just leaves an exact copy
+          // where the drag ended (see the isCopy handling in onPointerUp).
+          var isCopyDrag = e.ctrlKey || e.metaKey;
+          if (isCopyDrag) setSelection(cloneVolumesInPlace(selection));
           // Track whichever corner of the whole selection's bounding box is
           // closest (in plan, X/Z) to where it was grabbed -- this is the
           // corner that gets a chance to snap onto another shape's corner/
@@ -5427,6 +5704,7 @@
           moving = {
             startPoint: gp,
             grabCorner0: grabCorner0,
+            isCopy: isCopyDrag,
             items: selection.map(function (v) { return { vol: v, x0: v.mesh.position.x, z0: v.mesh.position.z }; })
           };
           renderer.domElement.setPointerCapture(e.pointerId);
@@ -6232,7 +6510,28 @@
     }
 
     if (moving) {
-      snapMovedGroupOntoSurfaceBelow(moving.items.map(function (it) { return it.vol; }));
+      var movedVols = moving.items.map(function (it) { return it.vol; });
+      if (moving.isCopy) {
+        var finalDx = moving.items[0].vol.mesh.position.x - moving.items[0].x0;
+        var finalDz = moving.items[0].vol.mesh.position.z - moving.items[0].z0;
+        if (Math.abs(finalDx) < 1e-4 && Math.abs(finalDz) < 1e-4) {
+          // Ctrl was held but the pointer never actually moved -- drop the
+          // stray clone instead of leaving an invisible duplicate stacked
+          // exactly on the original.
+          var copyGroupIds = {};
+          movedVols.forEach(function (v) { if (v.groupId) copyGroupIds[v.groupId] = true; });
+          movedVols.forEach(removeVolume);
+          Object.keys(copyGroupIds).forEach(function (gid) {
+            if (!groupMembers(gid).length) groups = groups.filter(function (g) { return g.id != gid; });
+          });
+          clearSelection();
+        } else {
+          snapMovedGroupOntoSurfaceBelow(movedVols);
+          arrayCopyState = { unitVols: movedVols, dx: finalDx, dz: finalDz };
+        }
+      } else {
+        snapMovedGroupOntoSurfaceBelow(movedVols);
+      }
       selectionOutlines.forEach(function (o) { o.update(); });
       updateCornerMarkers();
       moving = null;
