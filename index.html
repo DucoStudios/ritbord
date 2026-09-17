@@ -105,7 +105,7 @@
   }
 
   #stage.tool-rectangle canvas,
-  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas, #stage.tool-wall canvas, #stage.tool-scaleimage canvas { cursor: crosshair; }
+  #stage.tool-pushpull canvas, #stage.tool-scale canvas, #stage.tool-rotate canvas, #stage.tool-roof canvas, #stage.tool-wall canvas, #stage.tool-scaleimage canvas, #stage.tool-dimension canvas { cursor: crosshair; }
   #stage.tool-pan canvas { cursor: grab; }
   #stage.tool-pan.dragging canvas { cursor: grabbing; }
   #stage.tool-paint canvas, #stage.tool-opening canvas { cursor: pointer; }
@@ -877,6 +877,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4" stroke-dasharray="2.2 2.2"/><circle cx="4" cy="20" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="currentColor" stroke="none"/></svg>
       <span class="btn-label">Tape</span>
     </button>
+    <button class="tool-btn" data-tool="dimension" aria-pressed="false" title="Dimension: click two points to place a permanent measurement, click an existing one to remove it">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V7M20 17V7M4 12h16"/><path d="M4 12l3-2M4 12l3 2M20 12l-3-2M20 12l-3 2"/></svg>
+      <span class="btn-label">Dimension</span>
+    </button>
     <button class="tool-btn" data-tool="offset" aria-pressed="false" title="Offset: click a face, drag inward for a parallel inset panel you can push/pull separately (F)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="1"/><rect x="8" y="8" width="8" height="8" rx="0.5" stroke-dasharray="2 2"/></svg>
       <span class="btn-label">Offset</span>
@@ -1062,6 +1066,7 @@
     <div class="help-row"><kbd>7</kbd><span>Circle (drag from center)</span></div>
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
     <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line -- or type an exact distance + Enter instead of clicking</span></div>
+    <div class="help-row"><kbd>Dimension</kbd><span>Click two points for a permanent measurement label on the model (works on elevated points too, e.g. a wall's top). Click an existing one to remove it</span></div>
     <div class="help-row"><kbd>G</kbd><span>Roof: click a flat top, drag up to fold it into a gable roof</span></div>
     <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only), click near the start to close it, Esc to stop. Draws flat until extruded</span></div>
     <div class="help-row"><kbd>Wall + type</kbd><span>A number + Enter = exact length. X;Z + Enter = go to that exact point. @X;Z + Enter = move that far from the last point</span></div>
@@ -1493,6 +1498,147 @@
   var guideGroup = new THREE.Group();
   scene.add(guideGroup);
   var guideMat = new THREE.LineDashedMaterial({ color: 0x2fa7e0, dashSize: 0.22, gapSize: 0.14, transparent: true, opacity: 0.9, depthTest: false });
+
+  // ---- Dimensions: persistent measurement annotations (a line + a text
+  // label), unlike Tape's guides which are just infinite reference lines.
+  // Click two points to place one; with the Dimension tool active, clicking
+  // an *existing* one removes it instead -- same click-to-delete idea as
+  // SketchUp's own Dimension tool, no separate delete step needed.
+  var dimensions = []; // { id, a: {x,y,z}, b: {x,y,z}, group: THREE.Group }
+  var nextDimensionId = 1;
+  var dimensionDrawing = null; // { a: Vector3, line: THREE.Line }
+  var DIMENSION_OFFSET = 0.3;
+  var dimensionLineMat = new THREE.LineBasicMaterial({ color: 0xc1601f, depthTest: false });
+  var dimensionDotGeo = new THREE.SphereGeometry(0.035, 10, 8);
+  var dimensionDotMat = new THREE.MeshBasicMaterial({ color: 0xc1601f, depthTest: false });
+
+  // A perpendicular to dir, chosen deterministically so a saved/reloaded
+  // dimension always redraws on the same side rather than depending on
+  // whatever the camera happened to be doing at creation time.
+  function perpendicularOffset(dir) {
+    var up = new THREE.Vector3(0, 1, 0);
+    var perp = new THREE.Vector3().crossVectors(dir, up);
+    if (perp.lengthSq() < 1e-6) perp = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(1, 0, 0));
+    return perp.normalize();
+  }
+
+  function makeDimensionLabelSprite(text) {
+    var canvas = document.createElement("canvas");
+    var ctx = canvas.getContext("2d");
+    var fontSize = 48, padX = 20, padY = 14;
+    ctx.font = "600 " + fontSize + "px -apple-system, BlinkMacSystemFont, sans-serif";
+    var textWidth = ctx.measureText(text).width;
+    canvas.width = Math.ceil(textWidth + padX * 2);
+    canvas.height = fontSize + padY * 2;
+    ctx.font = "600 " + fontSize + "px -apple-system, BlinkMacSystemFont, sans-serif";
+    var r = 10, w = canvas.width, h = canvas.height;
+    ctx.beginPath();
+    ctx.moveTo(r, 0); ctx.lineTo(w - r, 0); ctx.arcTo(w, 0, w, r, r);
+    ctx.lineTo(w, h - r); ctx.arcTo(w, h, w - r, h, r);
+    ctx.lineTo(r, h); ctx.arcTo(0, h, 0, h - r, r);
+    ctx.lineTo(0, r); ctx.arcTo(0, 0, r, 0, r);
+    ctx.closePath();
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#c1601f";
+    ctx.stroke();
+    ctx.fillStyle = "#221f1a";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, w / 2, h / 2 + 2);
+    var tex = new THREE.CanvasTexture(canvas);
+    var mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+    var sprite = new THREE.Sprite(mat);
+    var worldHeight = 0.28;
+    sprite.scale.set(worldHeight * (w / h), worldHeight, 1);
+    sprite.renderOrder = 998;
+    return sprite;
+  }
+
+  function buildDimensionGroup(a, b) {
+    var dir = new THREE.Vector3().subVectors(b, a);
+    var len = dir.length();
+    if (len < 0.03) return null;
+    dir.normalize();
+    var perp = perpendicularOffset(dir);
+    var aOff = a.clone().addScaledVector(perp, DIMENSION_OFFSET);
+    var bOff = b.clone().addScaledVector(perp, DIMENSION_OFFSET);
+    var group = new THREE.Group();
+    function addSeg(p1, p2) {
+      var geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      var line = new THREE.Line(geo, dimensionLineMat);
+      line.renderOrder = 997;
+      group.add(line);
+    }
+    addSeg(a, aOff);
+    addSeg(b, bOff);
+    addSeg(aOff, bOff);
+    [aOff, bOff].forEach(function (p) {
+      var dot = new THREE.Mesh(dimensionDotGeo, dimensionDotMat);
+      dot.position.copy(p);
+      dot.renderOrder = 998;
+      group.add(dot);
+    });
+    var mid = aOff.clone().add(bOff).multiplyScalar(0.5);
+    var label = makeDimensionLabelSprite(len.toFixed(2) + " m");
+    label.position.copy(mid);
+    group.add(label);
+    return group;
+  }
+
+  function createDimension(a, b) {
+    var group = buildDimensionGroup(a, b);
+    if (!group) return null;
+    scene.add(group);
+    var dim = { id: nextDimensionId++, a: { x: a.x, y: a.y, z: a.z }, b: { x: b.x, y: b.y, z: b.z }, group: group };
+    dimensions.push(dim);
+    return dim;
+  }
+
+  function removeDimension(dim) {
+    scene.remove(dim.group);
+    dim.group.traverse(function (o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.isSprite && o.material.map) o.material.map.dispose();
+      if (o.material) o.material.dispose();
+    });
+    var i = dimensions.indexOf(dim);
+    if (i >= 0) dimensions.splice(i, 1);
+  }
+
+  function dimensionHit(e) {
+    updatePointer(e);
+    raycaster.setFromCamera(pointerNDC, camera);
+    for (var i = 0; i < dimensions.length; i++) {
+      var objs = [];
+      dimensions[i].group.traverse(function (o) { if (o.isMesh || o.isLine || o.isSprite) objs.push(o); });
+      if (raycaster.intersectObjects(objs, false).length) return dimensions[i];
+    }
+    return null;
+  }
+
+  // Picks a point to measure from/to: real geometry (any face, any height)
+  // if the cursor is over a shape, the ground plane otherwise, then snaps
+  // onto the nearest actual corner/midpoint in full 3D if one is close --
+  // reuses findPointSnap so a dimension lands on the same exact corners
+  // Wall/Line/Tape already snap to, including elevated ones (e.g. a wall's
+  // top edge), not just ground-level points.
+  function dimensionPointHit(e) {
+    var hit = volumeHit(e);
+    var raw = hit ? hit.point.clone() : groundHit(e);
+    if (!raw) return null;
+    var snap = findPointSnap(raw, getSceneEdgeSamples());
+    return snap ? snap.point.clone() : raw;
+  }
+
+  function cancelDimensionDrawing() {
+    if (!dimensionDrawing) return;
+    scene.remove(dimensionDrawing.line);
+    dimensionDrawing.line.geometry.dispose();
+    dimensionDrawing = null;
+    hideDims();
+  }
 
   function renderGuideLines() {
     while (guideGroup.children.length) {
@@ -2118,6 +2264,66 @@
   }
   function groupMembers(gid) { return volumes.filter(function (v) { return v.groupId === gid; }); }
 
+  // After a Move drag finishes, if what was just dragged is a *complete*
+  // group (every member of that group is in movedVols, matching what
+  // selectSingle already auto-selects when you click one member), check
+  // whether it now sits over some other shape and, if so, lift/lower the
+  // whole group so its bottom rests exactly on that shape's top surface --
+  // the same "always lands on whatever's below" rule props already use
+  // (see propSurfaceHit), just applied once at drag-release instead of
+  // every frame, and only for a whole group so an ordinary single-shape/
+  // furniture move never gets an unexpected vertical jump.
+  //
+  // Sampling: a floor built from walls is a perimeter, not a solid slab --
+  // the center of its overall bounding box almost always falls in open
+  // space between the walls (verified: an L-shaped two-wall group's own
+  // bbox center sits over neither wall), so a single ray from the group's
+  // bbox center would silently miss the very geometry that should support
+  // it. Instead, cast one ray from each moved volume's *own* footprint
+  // center and take the highest surface found across all of them, so a
+  // wall lands on the matching wall directly beneath it even though the
+  // group as a whole is hollow in the middle. This is what lets three
+  // storey groups get stacked into a house just by dragging each one
+  // roughly over the last.
+  function snapMovedGroupOntoSurfaceBelow(movedVols) {
+    if (!movedVols.length) return;
+    var gid = movedVols[0].groupId;
+    if (!gid || !movedVols.every(function (v) { return v.groupId === gid; })) return;
+    if (groupMembers(gid).length !== movedVols.length) return;
+    var otherMeshes = volumes.filter(function (v) { return movedVols.indexOf(v) === -1 && layerOf(v).visible; }).map(function (v) { return v.mesh; });
+    if (!otherMeshes.length) return;
+    var groupBottom = Infinity;
+    movedVols.forEach(function (v) { groupBottom = Math.min(groupBottom, new THREE.Box3().setFromObject(v.mesh).min.y); });
+    // Rays must start above *everything* they might need to detect, not just
+    // above the moving object's own current height -- if a second storey
+    // already snapped onto the first, its top can sit higher than a third
+    // storey's own pre-move height, so a ray starting from the mover's own
+    // bounding box would begin already inside that second storey and never
+    // see its top face (a ray's default front-face-only intersection can't
+    // detect a face it started behind/inside).
+    var sceneTopY = groupBottom;
+    otherMeshes.forEach(function (m) { sceneTopY = Math.max(sceneTopY, new THREE.Box3().setFromObject(m).max.y); });
+    var rayStartY = sceneTopY + 1;
+    var bestTargetY = null;
+    movedVols.forEach(function (v) {
+      var vb = new THREE.Box3().setFromObject(v.mesh);
+      var cx = (vb.min.x + vb.max.x) / 2, cz = (vb.min.z + vb.max.z) / 2;
+      var rayOrigin = new THREE.Vector3(cx, rayStartY, cz);
+      var rc = new THREE.Raycaster(rayOrigin, new THREE.Vector3(0, -1, 0));
+      var hits = rc.intersectObjects(otherMeshes, false);
+      for (var i = 0; i < hits.length; i++) {
+        if (hits[i].face.normal.y > 0.5) {
+          if (bestTargetY === null || hits[i].point.y > bestTargetY) bestTargetY = hits[i].point.y;
+          break;
+        }
+      }
+    });
+    if (bestTargetY !== null) {
+      var deltaY = bestTargetY - groupBottom;
+      if (Math.abs(deltaY) > 1e-4) movedVols.forEach(function (v) { v.mesh.position.y += deltaY; });
+    }
+  }
+
   // transient edge helper for the volume currently being drawn/pulled
   var liveOutline = new THREE.BoxHelper(new THREE.Object3D(), 0x000000);
   liveOutline.material.transparent = true;
@@ -2354,6 +2560,7 @@
 
   function clearAll() {
     while (volumes.length) removeVolume(volumes[0]);
+    while (dimensions.length) removeDimension(dimensions[0]);
     clearPendingSketch();
   }
 
@@ -2417,7 +2624,8 @@
       nextGroupId: nextGroupId,
       guides: guides,
       nextGuideId: nextGuideId,
-      props: props.map(function (p) { return { type: p.type, x: p.group.position.x, y: p.group.position.y, z: p.group.position.z, rotationY: p.group.rotation.y }; })
+      props: props.map(function (p) { return { type: p.type, x: p.group.position.x, y: p.group.position.y, z: p.group.position.z, rotationY: p.group.rotation.y }; }),
+      dimensions: dimensions.map(function (d) { return { a: d.a, b: d.b }; })
     };
   }
   function persistState() {
@@ -2447,6 +2655,11 @@
           try { placeProp(p.type, { x: p.x, y: p.y, z: p.z }, p.rotationY); } catch (err) { console.warn("Skipped a corrupt saved prop", err); }
         });
         selectProp(null);
+      }
+      if (Array.isArray(data.dimensions)) {
+        data.dimensions.forEach(function (d) {
+          try { createDimension(new THREE.Vector3(d.a.x, d.a.y, d.a.z), new THREE.Vector3(d.b.x, d.b.y, d.b.z)); } catch (err) { console.warn("Skipped a corrupt saved dimension", err); }
+        });
       }
       return true;
     } catch (err) {
@@ -2892,7 +3105,8 @@
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
     wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E). Thickness/height: the wall icon in the toolbar",
     opening: "Click a wall to cut a door or window there. Press D to toggle Door/Window",
-    scaleimage: "Click two points on the reference image, then type the real distance between them + Enter"
+    scaleimage: "Click two points on the reference image, then type the real distance between them + Enter",
+    dimension: "Click two points to place a permanent measurement. Click an existing one to remove it"
   };
 
   function setTool(next) {
@@ -2907,6 +3121,7 @@
     if (next !== "wall") cancelWallDrawing();
     if (next !== "opening") cancelOpeningPreview();
     if (next !== "scaleimage") cancelImageScaleDrawing();
+    if (next !== "dimension") cancelDimensionDrawing();
     if (next !== "place-prop") armedProp = null;
     hideInferenceOverlay();
     tool = next;
@@ -3166,7 +3381,7 @@
     else if (e.key.toLowerCase() === "u") groupSelected();
     else if (e.key.toLowerCase() === "k") toggleLockSelectedGroup();
     else if (e.key.toLowerCase() === "t") toggleToolbar();
-    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); cancelWallDrawing(); cancelImageScaleDrawing(); }
+    else if (e.key === "Escape") { cancelLineDrawing(); cancelArcDrawing(); cancelCircleDrawing(); cancelOffsetDrawing(); cancelWallDrawing(); cancelImageScaleDrawing(); cancelDimensionDrawing(); }
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if (e.key === "Enter" && faceLineDrawing && faceLineDrawing.points.length >= 3) finalizeFaceLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
@@ -5371,6 +5586,25 @@
         setLinePositions(imageScaleDrawing.line, [imageScaleDrawing.a, imageScaleDrawing.b], 0.02);
         showDims(imageScaleDrawing.a.distanceTo(imageScaleDrawing.b), 0, 0);
       }
+    } else if (tool === "dimension") {
+      var existingDim = dimensionHit(e);
+      if (existingDim) {
+        removeDimension(existingDim);
+        persistState();
+        return;
+      }
+      var dPoint = dimensionPointHit(e);
+      if (!dPoint) return;
+      if (!dimensionDrawing) {
+        var dLine = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
+        scene.add(dLine);
+        dimensionDrawing = { a: dPoint.clone(), line: dLine };
+        setLinePositions(dLine, [dimensionDrawing.a], 0.02);
+      } else {
+        createDimension(dimensionDrawing.a, dPoint);
+        cancelDimensionDrawing();
+        persistState();
+      }
     } else if (tool === "place-prop" && armedProp) {
       var pp = propSurfaceHit(e);
       if (!pp) return;
@@ -5420,6 +5654,15 @@
       if (imMoveHit) {
         setLinePositions(imageScaleDrawing.line, [imageScaleDrawing.a, imMoveHit.point], 0.02);
         showDims(imageScaleDrawing.a.distanceTo(imMoveHit.point), 0, 0);
+      }
+      return;
+    }
+
+    if (dimensionDrawing) {
+      var dmPoint = dimensionPointHit(e);
+      if (dmPoint) {
+        setLinePositions(dimensionDrawing.line, [dimensionDrawing.a, dmPoint], 0.02);
+        showDims(dimensionDrawing.a.distanceTo(dmPoint), 0, 0);
       }
       return;
     }
@@ -5863,7 +6106,12 @@
       sketchPull = null;
     }
 
-    if (moving) { moving = null; hideInferenceOverlay(); }
+    if (moving) {
+      snapMovedGroupOntoSurfaceBelow(moving.items.map(function (it) { return it.vol; }));
+      selectionOutlines.forEach(function (o) { o.update(); });
+      moving = null;
+      hideInferenceOverlay();
+    }
     if (movingProp) { movingProp = null; persistState(); }
     if (paintDragActive) { paintDragActive = false; }
     try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) {}
