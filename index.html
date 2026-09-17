@@ -911,6 +911,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="12" rx="1.5"/><path d="M9 7V5a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-2"/></svg>
       <span class="btn-label">Duplicate</span>
     </button>
+    <button class="tool-btn" data-action="delete" title="Delete the selected shape(s) or group (Delete/Backspace)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg>
+      <span class="btn-label">Delete</span>
+    </button>
     <span class="tool-sep"></span>
     <button class="tool-btn" data-action="save" title="Save: download this drawing as a file to your device">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
@@ -1084,6 +1088,7 @@
     <div class="help-row"><kbd>U</kbd><span>Group the selected shapes (shift-click more first)</span></div>
     <div class="help-row"><kbd>K</kbd><span>Lock/unlock the selected group</span></div>
     <div class="help-row"><kbd>⌘/Ctrl</kbd><kbd>D</kbd><span>Duplicate the selected shape(s) or group (shift-click to select several first)</span></div>
+    <div class="help-row"><kbd>Delete</kbd><span>Delete the selected shape(s) or group -- or a placed figure/tree/car if one of those is selected instead</span></div>
     <div class="help-row"><kbd>Layers panel</kbd><span>New layer, show/hide, lock a whole layer</span></div>
     <h3>Mouse</h3>
     <div class="help-row"><kbd>Left-click, drag</kbd><span>Active tool</span></div>
@@ -2690,6 +2695,32 @@
     persistState();
   }
 
+  // Deletes every selected shape -- one, several shift-selected, or a
+  // whole group (selectSingle already expands a click to the whole group).
+  // If deleting empties out a group entirely, that now-empty group entry
+  // is dropped too so it doesn't linger as a dangling id.
+  function deleteSelected() {
+    if (!selection.length) return;
+    if (selection.some(isLocked)) {
+      setHint("The shape is locked (group or layer)");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2200);
+      return;
+    }
+    snapshot();
+    var toRemove = selection.slice();
+    var count = toRemove.length;
+    var groupIds = {};
+    toRemove.forEach(function (v) { if (v.groupId) groupIds[v.groupId] = true; });
+    toRemove.forEach(removeVolume);
+    Object.keys(groupIds).forEach(function (gid) {
+      if (!groupMembers(gid).length) groups = groups.filter(function (g) { return g.id != gid; });
+    });
+    clearSelection();
+    setHint("Deleted " + count + " shape" + (count === 1 ? "" : "s"));
+    setTimeout(function () { setHint(HINTS[tool] || ""); }, 1800);
+    persistState();
+  }
+
   function toggleLockSelectedGroup() {
     if (!selection.length || !selection[0].groupId || !selection.every(function (v) { return v.groupId === selection[0].groupId; })) {
       setHint("Select a whole group first (click a group member)");
@@ -2893,6 +2924,7 @@
   document.querySelector('[data-action="group"]').addEventListener("click", groupSelected);
   document.querySelector('[data-action="lockgroup"]').addEventListener("click", toggleLockSelectedGroup);
   document.querySelector('[data-action="duplicate"]').addEventListener("click", duplicateSelected);
+  document.querySelector('[data-action="delete"]').addEventListener("click", deleteSelected);
   document.querySelector('[data-action="clearguides"]').addEventListener("click", function () {
     if (!guides.length) return;
     guides = [];
@@ -3138,6 +3170,7 @@
     else if (e.key === "Enter" && lineDrawing && lineDrawing.points.length >= 3) finalizeLineDrawing();
     else if (e.key === "Enter" && faceLineDrawing && faceLineDrawing.points.length >= 3) finalizeFaceLineDrawing();
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedPropEntry) { e.preventDefault(); removeProp(selectedPropEntry); }
+    else if ((e.key === "Delete" || e.key === "Backspace") && selection.length) { e.preventDefault(); deleteSelected(); }
   });
 
   window.addEventListener("keyup", function (e) {
