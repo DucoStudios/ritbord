@@ -555,6 +555,13 @@
     cursor: pointer;
   }
   .tool-options .preset-btn[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tool-options-hint {
+    margin: 0 0 8px;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    color: var(--steel);
+  }
+  #wallExtrudeBtn { display: block; width: 100%; }
 
   .sun-readout {
     margin-top: 10px;
@@ -813,9 +820,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
       <span class="btn-label">Draw</span>
     </button>
-    <button class="tool-btn" data-tool="wall" aria-pressed="false" title="Wall: click corners for a wall centerline (straight segments), click near the start to close (W)">
+    <button class="tool-btn" data-tool="wall" aria-pressed="false" title="Wall: click corners for a wall centerline (straight segments, type a number + Enter for an exact length), click near the start to close. Draws flat until extruded (W)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="0.6"/><path d="M3 12h18" stroke-dasharray="1.6 1.6"/></svg>
       <span class="btn-label">Wall</span>
+    </button>
+    <button class="tool-btn" data-action="extrudewalls" title="Extrude walls: raise every flat (not-yet-extruded) wall to its planned height (E)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="15" width="16" height="5" rx="0.6"/><path d="M12 12V3M12 3l-3 3M12 3l3 3"/></svg>
+      <span class="btn-label">Extrude walls</span>
     </button>
     <button class="tool-btn" data-tool="pushpull" aria-pressed="false" title="Push/pull volume (3)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 3l-3.5 3.5M12 3l3.5 3.5"/><rect x="5" y="15" width="14" height="6" rx="1"/></svg>
@@ -958,6 +969,8 @@
     <h2>Vägg</h2>
     <div class="opt-row"><label for="wallThickness">Tjocklek cm</label><input type="number" id="wallThickness" value="15" min="5" max="60" step="1"></div>
     <div class="opt-row"><label for="wallHeight">Höjd cm</label><input type="number" id="wallHeight" value="250" min="50" max="600" step="5"></div>
+    <p class="tool-options-hint">Väggarna ritas platta. Rita klart hela planen, tryck sedan Extrudera väggar (E).</p>
+    <button class="preset-btn" id="wallExtrudeBtn" type="button">Extrudera väggar</button>
   </div>
 
   <div class="tool-options" id="openingOptionsPanel">
@@ -1005,7 +1018,8 @@
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
     <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line</span></div>
     <div class="help-row"><kbd>G</kbd><span>Roof: click a flat top, drag up to fold it into a gable roof</span></div>
-    <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only), click near the start to close it, Esc to stop</span></div>
+    <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only, type a length + Enter for an exact one), click near the start to close it, Esc to stop. Draws flat until extruded</span></div>
+    <div class="help-row"><kbd>E</kbd><span>Extrude walls: raise every flat wall to the height it was drawn with</span></div>
     <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there, pick which in the panel on the left</span></div>
     <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
     <div class="help-row"><kbd>Library panel</kbd><span>Place reference people, trees and vehicles</span></div>
@@ -1121,6 +1135,7 @@
   var wallOptionsPanelEl = document.getElementById("wallOptionsPanel");
   var wallThicknessEl = document.getElementById("wallThickness");
   var wallHeightInputEl = document.getElementById("wallHeight");
+  var wallExtrudeBtnEl = document.getElementById("wallExtrudeBtn");
   var openingOptionsPanelEl = document.getElementById("openingOptionsPanel");
   var openingPresetDoorEl = document.getElementById("openingPresetDoor");
   var openingPresetWindowEl = document.getElementById("openingPresetWindow");
@@ -2108,7 +2123,8 @@
     return {
       kind: "box", x: v.mesh.position.x, y: v.mesh.position.y, z: v.mesh.position.z, w: v.mesh.scale.x, d: v.mesh.scale.z, h: v.mesh.scale.y,
       c: v.color, faceColors: v.mesh.material.map(function (m) { return "#" + m.color.getHexString(); }),
-      layerId: v.layerId, groupId: v.groupId
+      layerId: v.layerId, groupId: v.groupId,
+      isFlatPlan: v.isFlatPlan, plannedHeight: v.plannedHeight
     };
   }
   function restoreVolume(s) {
@@ -2122,6 +2138,8 @@
     if (s.faceColors) v.mesh.material.forEach(function (m, i) { m.color.set(s.faceColors[i]); });
     v.layerId = s.layerId !== undefined ? s.layerId : v.layerId;
     v.groupId = s.groupId !== undefined ? s.groupId : v.groupId;
+    v.isFlatPlan = !!s.isFlatPlan;
+    v.plannedHeight = s.plannedHeight;
     v.mesh.visible = layerOf(v).visible;
     return v;
   }
@@ -2418,13 +2436,13 @@
   var vcbActive = false;
 
   function vcbSupportedSession() {
-    return !!(drawing || pulling || lineDrawing || faceLineDrawing);
+    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing);
   }
 
   function vcbHintFor() {
     if (drawing) return "Mått, BxD";
     if (pulling) return pulling.axis === "y" ? "Höjd" : "Längd";
-    if (lineDrawing || faceLineDrawing) return "Längd";
+    if (lineDrawing || faceLineDrawing || wallDrawing) return "Längd";
     return "Mått";
   }
 
@@ -2490,6 +2508,9 @@
     } else if (faceLineDrawing) {
       var flen = parseVcbSingle(buf);
       if (flen !== null && flen > 0) applyFaceLineSegmentExact(flen);
+    } else if (wallDrawing) {
+      var wlen = parseVcbSingle(buf);
+      if (wlen !== null && wlen > 0) applyWallSegmentExact(wlen);
     }
   }
 
@@ -2518,7 +2539,7 @@
     tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
-    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical), click near the start to close the loop, Esc to stop",
+    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical; type a number + Enter for an exact length), click near the start to close the loop. Walls draw flat until you extrude them (E)",
     opening: "Click a wall to cut a door or window there (pick which on the left)"
   };
 
@@ -2546,6 +2567,7 @@
   toolButtons.forEach(function (b) {
     b.addEventListener("click", function () { setTool(b.dataset.tool); });
   });
+  document.querySelector('[data-action="extrudewalls"]').addEventListener("click", extrudeFlatWalls);
   document.querySelector('[data-action="subtract"]').addEventListener("click", subtractSelected);
   document.querySelector('[data-action="chamfer"]').addEventListener("click", chamferSelected);
   document.querySelector('[data-action="group"]').addEventListener("click", groupSelected);
@@ -2773,6 +2795,7 @@
     else if (e.key.toLowerCase() === "f") setTool("offset");
     else if (e.key.toLowerCase() === "w") setTool("wall");
     else if (e.key.toLowerCase() === "o") setTool("opening");
+    else if (e.key.toLowerCase() === "e") extrudeFlatWalls();
     else if (e.key.toLowerCase() === "s") subtractSelected();
     else if (e.key.toLowerCase() === "c") chamferSelected();
     else if (e.key.toLowerCase() === "u") groupSelected();
@@ -2873,6 +2896,7 @@
     openingPresetWindowEl.setAttribute("aria-pressed", "true");
     openingPresetDoorEl.setAttribute("aria-pressed", "false");
   });
+  wallExtrudeBtnEl.addEventListener("click", function () { extrudeFlatWalls(); });
 
   function cancelTapeDrawing() {
     if (!tapeDrawing) return;
@@ -2883,12 +2907,16 @@
   }
 
   // ---- Wall tool: click a centerline, each segment is created immediately
-  // as its own axis-aligned box volume (thickness x length x wallHeightM),
-  // so it comes out of the ground already extruded -- no separate push/pull
-  // step. Segments are forced horizontal/vertical (never diagonal) because a
-  // plain box volume has no rotation to give it (see the axis-aligned-mesh
-  // invariant everywhere else in this file); this matches Rectangle's own
-  // axis-aligned footprints rather than Line's free-angle polygons.
+  // as its own axis-aligned box volume (thickness x length), forced
+  // horizontal/vertical (never diagonal) because a plain box volume has no
+  // rotation to give it (see the axis-aligned-mesh invariant everywhere else
+  // in this file); this matches Rectangle's own axis-aligned footprints
+  // rather than Line's free-angle polygons. Walls are drawn flat
+  // (FLAT_WALL_HEIGHT) so a whole detailed plan can be laid out precisely
+  // before committing to a height -- Extrudera väggar (E) raises every flat
+  // wall to the height that was set on the options panel at the moment it
+  // was drawn (vol.plannedHeight), all at once.
+  var FLAT_WALL_HEIGHT = 0.05;
   function cancelWallDrawing() {
     if (!wallDrawing) return;
     scene.remove(wallDrawing.line);
@@ -2917,9 +2945,41 @@
       minX = (a.x + b.x) / 2 - t / 2; w = t;
     }
     snapshot();
-    var vol = makeVolume(minX, minZ, w, d, wallHeightM, activeSwatch, 0);
+    var vol = makeVolume(minX, minZ, w, d, FLAT_WALL_HEIGHT, activeSwatch, 0);
+    vol.isFlatPlan = true;
+    vol.plannedHeight = wallHeightM;
     persistState();
     return vol;
+  }
+
+  function applyWallSegmentExact(length) {
+    if (!wallDrawing || !wallDrawing.lastDir) return;
+    var origin = wallDrawing.points[wallDrawing.points.length - 1];
+    var newPoint = origin.clone().addScaledVector(wallDrawing.lastDir, length);
+    var first = wallDrawing.points[0];
+    if (wallDrawing.points.length >= 3 && first.distanceTo(newPoint) < 0.35) {
+      createWallSegment(origin, first);
+      cancelWallDrawing();
+    } else {
+      createWallSegment(origin, newPoint);
+      wallDrawing.points.push(newPoint);
+      setLinePositions(wallDrawing.line, wallDrawing.points, 0.03);
+    }
+  }
+
+  function extrudeFlatWalls() {
+    var flat = volumes.filter(function (v) { return v.isFlatPlan; });
+    if (!flat.length) {
+      setHint("Inga platta väggar att extrudera ännu");
+      setTimeout(function () { setHint(HINTS[tool] || ""); }, 2400);
+      return;
+    }
+    snapshot();
+    flat.forEach(function (v) {
+      v.mesh.scale.y = v.plannedHeight || wallHeightM;
+      v.isFlatPlan = false;
+    });
+    persistState();
   }
 
   function finalizeTape(endPoint) {
@@ -3294,6 +3354,7 @@
     if (axis === "y") {
       var h = Math.max(minSize, Math.min(60, newFacePos));
       v.mesh.scale.y = h;
+      v.isFlatPlan = false;
       showDims(v.mesh.scale.x, v.mesh.scale.z, h);
       return;
     }
@@ -3315,6 +3376,7 @@
     if (axis === "y") {
       var h = Math.max(minSize, Math.min(60, exactSize));
       v.mesh.scale.y = h;
+      v.isFlatPlan = false;
       showDims(v.mesh.scale.x, v.mesh.scale.z, h);
       return;
     }
@@ -4888,8 +4950,10 @@
       if (wmRaw) {
         var wmOrigin = wallDrawing.points[wallDrawing.points.length - 1];
         var wmPoint = constrainOrtho(wmOrigin, wmRaw);
+        var wmDist = wmOrigin.distanceTo(wmPoint);
+        if (wmDist > 1e-4) wallDrawing.lastDir = wmPoint.clone().sub(wmOrigin).divideScalar(wmDist);
         setLinePositions(wallDrawing.line, wallDrawing.points.concat([wmPoint]), 0.03);
-        showDims(wmOrigin.distanceTo(wmPoint), wallThicknessM, wallHeightM);
+        showDims(wmDist, wallThicknessM, wallHeightM);
       }
       return;
     }
