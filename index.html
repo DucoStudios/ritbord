@@ -2898,7 +2898,7 @@
       }
     }
 
-    var inferenceSessionActive = !!(lineDrawing || faceLineDrawing || drawing || moving);
+    var inferenceSessionActive = !!(lineDrawing || faceLineDrawing || drawing || moving || wallDrawing);
     if (inferenceSessionActive && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
       inferenceRuntime.forcedAxis = (e.key === "ArrowLeft" || e.key === "ArrowRight") ? "x" : "z";
@@ -3054,12 +3054,30 @@
     wallDrawing.line.geometry.dispose();
     wallDrawing = null;
     hideDims();
+    hideInferenceOverlay();
   }
 
+  // Final hard clamp onto whichever world axis is closer to the drag from
+  // origin -- a wall segment must stay perfectly horizontal/vertical to be
+  // representable as a plain box (see the note above createWallSegment), so
+  // this always wins even if the point handed to it came from a corner/
+  // length snap that wasn't itself axis-aligned.
   function constrainOrtho(origin, raw) {
     var dx = raw.x - origin.x, dz = raw.z - origin.z;
     if (Math.abs(dx) >= Math.abs(dz)) return new THREE.Vector3(raw.x, 0, origin.z);
     return new THREE.Vector3(origin.x, 0, raw.z);
+  }
+
+  // Wall's point resolution: run the same SketchUp-style inference Line
+  // already uses (endpoint/midpoint snap to existing corners, length-match
+  // to another edge, and -- the part that was missing before -- a colored
+  // guide line + "Låst på röd/grön axel" label while the drag is close to
+  // an axis), then hard-clamp the result onto an axis so it's never a hair
+  // off straight even when the inference itself didn't lock (e.g. an
+  // exactly 45° drag, or a corner-snap that isn't itself axis-aligned).
+  function wallEffectivePoint(origin, rawPoint) {
+    var effective = computeEffectivePoint(origin, rawPoint, { axisCandidates: ["x", "z"] });
+    return constrainOrtho(origin, effective);
   }
 
   function createWallSegment(a, b) {
@@ -5045,13 +5063,14 @@
       var wRaw = groundHit(e);
       if (!wRaw) return;
       if (!wallDrawing) {
+        var wStart = computeEffectivePoint(null, wRaw, {});
         var wLineObj = new THREE.Line(new THREE.BufferGeometry(), previewLineMat);
         scene.add(wLineObj);
-        wallDrawing = { points: [wRaw.clone()], line: wLineObj };
+        wallDrawing = { points: [wStart.clone()], line: wLineObj };
         setLinePositions(wLineObj, wallDrawing.points, 0.03);
       } else {
         var wOrigin = wallDrawing.points[wallDrawing.points.length - 1];
-        var wPoint = constrainOrtho(wOrigin, wRaw);
+        var wPoint = wallEffectivePoint(wOrigin, wRaw);
         var wFirst = wallDrawing.points[0];
         if (wallDrawing.points.length >= 3 && wFirst.distanceTo(wPoint) < 0.35) {
           createWallSegment(wOrigin, wFirst);
@@ -5107,7 +5126,7 @@
       var wmRaw = groundHit(e);
       if (wmRaw) {
         var wmOrigin = wallDrawing.points[wallDrawing.points.length - 1];
-        var wmPoint = constrainOrtho(wmOrigin, wmRaw);
+        var wmPoint = wallEffectivePoint(wmOrigin, wmRaw);
         var wmDist = wmOrigin.distanceTo(wmPoint);
         if (wmDist > 1e-4) wallDrawing.lastDir = wmPoint.clone().sub(wmOrigin).divideScalar(wmDist);
         setLinePositions(wallDrawing.line, wallDrawing.points.concat([wmPoint]), 0.03);
