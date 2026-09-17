@@ -873,7 +873,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18a14 14 0 0116-14"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none"/></svg>
       <span class="btn-label">Arc</span>
     </button>
-    <button class="tool-btn" data-tool="tape" aria-pressed="false" title="Tape measure: click a corner, drag out, click to drop a guide line other tools snap to (9)">
+    <button class="tool-btn" data-tool="tape" aria-pressed="false" title="Tape measure: click a corner, drag out, click (or type a distance + Enter) to drop a guide line other tools snap to (9)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4" stroke-dasharray="2.2 2.2"/><circle cx="4" cy="20" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="currentColor" stroke="none"/></svg>
       <span class="btn-label">Tape</span>
     </button>
@@ -1053,7 +1053,7 @@
     <div class="help-row"><kbd>6</kbd><span>Line (click points, click near start or press Enter to close)</span></div>
     <div class="help-row"><kbd>7</kbd><span>Circle (drag from center)</span></div>
     <div class="help-row"><kbd>8</kbd><span>Arc (click center, click start, click end)</span></div>
-    <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line</span></div>
+    <div class="help-row"><kbd>9</kbd><span>Tape measure: click a corner, drag, click to drop a guide line -- or type an exact distance + Enter instead of clicking</span></div>
     <div class="help-row"><kbd>G</kbd><span>Roof: click a flat top, drag up to fold it into a gable roof</span></div>
     <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only), click near the start to close it, Esc to stop. Draws flat until extruded</span></div>
     <div class="help-row"><kbd>Wall + type</kbd><span>A number + Enter = exact length. X;Z + Enter = go to that exact point. @X;Z + Enter = move that far from the last point</span></div>
@@ -2676,7 +2676,7 @@
   var vcbActive = false;
 
   function vcbSupportedSession() {
-    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing || (imageScaleDrawing && imageScaleDrawing.b));
+    return !!(drawing || pulling || lineDrawing || faceLineDrawing || wallDrawing || tapeDrawing || (imageScaleDrawing && imageScaleDrawing.b));
   }
 
   function vcbHintFor() {
@@ -2684,7 +2684,7 @@
     if (pulling) return pulling.axis === "y" ? "Höjd" : "Längd";
     if (wallDrawing) return "Längd, eller X;Z / @X;Z";
     if (imageScaleDrawing && imageScaleDrawing.b) return "Verklig längd";
-    if (lineDrawing || faceLineDrawing) return "Längd";
+    if (tapeDrawing || lineDrawing || faceLineDrawing) return "Längd";
     return "Mått";
   }
 
@@ -2778,6 +2778,9 @@
     } else if (imageScaleDrawing && imageScaleDrawing.b) {
       var realLen = parseVcbSingle(buf);
       if (realLen !== null && realLen > 0) applyImageScaleExact(realLen);
+    } else if (tapeDrawing) {
+      var tapeLen = parseVcbSingle(buf);
+      if (tapeLen !== null && tapeLen > 0) applyTapeExact(tapeLen);
     }
   }
 
@@ -2803,7 +2806,7 @@
     line: "Click points to sketch a shape, click near the start (or press Enter) to close it",
     circle: "Drag from the center to set the radius",
     arc: "Click the center, click the start point, then click to set the sweep",
-    tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
+    tape: "Click a corner (snaps automatically), drag out, click to drop a guide line -- or type the exact distance + Enter instead of clicking",
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
     wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E). Thickness/height: the wall icon in the toolbar",
@@ -3044,7 +3047,7 @@
       }
     }
 
-    var inferenceSessionActive = !!(lineDrawing || faceLineDrawing || drawing || moving || wallDrawing);
+    var inferenceSessionActive = !!(lineDrawing || faceLineDrawing || drawing || moving || wallDrawing || tapeDrawing);
     if (inferenceSessionActive && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
       inferenceRuntime.forcedAxis = (e.key === "ArrowLeft" || e.key === "ArrowRight") ? "x" : "z";
@@ -3182,6 +3185,7 @@
     tapeDrawing.line.geometry.dispose();
     tapeDrawing = null;
     hideDims();
+    hideInferenceOverlay();
   }
 
   // ---- Wall tool: click a centerline, each segment is created immediately
@@ -3313,6 +3317,17 @@
     cancelTapeDrawing();
     renderGuideLines();
     persistState();
+  }
+
+  // Typed exact distance for the tape measure -- same idea as Wall/Line's
+  // own exact-length entry: keep dragging in roughly the right direction,
+  // then type the precise offset instead of eyeballing the pixel position.
+  function applyTapeExact(length) {
+    if (!tapeDrawing || !tapeDrawing.lastDir) return;
+    var endPoint = tapeDrawing.origin.clone();
+    endPoint.x += tapeDrawing.lastDir.x * length;
+    endPoint.z += tapeDrawing.lastDir.z * length;
+    finalizeTape(endPoint);
   }
 
   var unitCircleGeo = new THREE.CircleGeometry(1, 48);
@@ -5189,7 +5204,7 @@
         scene.add(tapeLine);
         tapeDrawing = { origin: tp.clone(), line: tapeLine };
       } else {
-        finalizeTape(tp);
+        finalizeTape(computeEffectivePoint(tapeDrawing.origin, tp, {}));
       }
     } else if (tool === "offset") {
       var faceHitO = volumeHit(e);
@@ -5453,10 +5468,13 @@
     }
 
     if (tapeDrawing) {
-      var tmp = groundHit(e);
-      if (tmp) {
+      var tmpRaw = groundHit(e);
+      if (tmpRaw) {
+        var tmp = computeEffectivePoint(tapeDrawing.origin, tmpRaw, {});
         setLinePositions(tapeDrawing.line, [tapeDrawing.origin, tmp], 0.04);
         var tdx = tmp.x - tapeDrawing.origin.x, tdz = tmp.z - tapeDrawing.origin.z;
+        var tDist = Math.hypot(tdx, tdz);
+        if (tDist > 1e-4) tapeDrawing.lastDir = { x: tdx / tDist, z: tdz / tDist };
         var dist = Math.abs(Math.abs(tdx) > Math.abs(tdz) ? tdx : tdz);
         showDims(dist, dist, 0);
       }
