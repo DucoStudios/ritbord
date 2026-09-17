@@ -939,6 +939,12 @@
     <button class="icon-toggle" id="view2DToggle" aria-pressed="false" title="2D plan view: true orthographic top-down, no perspective, for precise drafting (orbit disabled, pan/zoom still work)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 8v8M9 11l3-3 3 3"/></svg>
     </button>
+    <button class="icon-toggle" id="wallSettingsToggle" aria-pressed="false" title="Wall settings: thickness/height, and the Extrude walls button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="6" rx="0.6"/><path d="M3 12h18" stroke-dasharray="1.6 1.6"/></svg>
+    </button>
+    <button class="icon-toggle" id="openingSettingsToggle" aria-pressed="false" title="Opening settings: choose Door or Window">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h6M15 12h6"/><path d="M9 12a6 6 0 016-6"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
+    </button>
     <button class="icon-toggle" id="gridToggle" aria-pressed="true" title="Show/hide grid">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
     </button>
@@ -1038,7 +1044,9 @@
     <div class="help-row"><kbd>W</kbd><span>Wall: click corners for a wall centerline (straight segments only), click near the start to close it, Esc to stop. Draws flat until extruded</span></div>
     <div class="help-row"><kbd>Wall + type</kbd><span>A number + Enter = exact length. X;Z + Enter = go to that exact point. @X;Z + Enter = move that far from the last point</span></div>
     <div class="help-row"><kbd>E</kbd><span>Extrude walls: raise every flat wall to the height it was drawn with</span></div>
-    <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there, pick which in the panel on the left</span></div>
+    <div class="help-row"><kbd>Wall settings icon</kbd><span>Thickness/height and the Extrude walls button, open on demand so it never sits over the canvas while you draw</span></div>
+    <div class="help-row"><kbd>O</kbd><span>Opening: click a wall to cut a door or window there</span></div>
+    <div class="help-row"><kbd>Opening settings icon</kbd><span>Choose Door or Window, open on demand</span></div>
     <div class="help-row"><kbd>2D view</kbd><span>Toolbar toggle: true orthographic top-down plan, no perspective skew, for precise drafting (orbit off, pan/zoom still on)</span></div>
     <div class="help-row"><kbd>Properties panel</kbd><span>Select a plain shape (not one already cut with Subtract): edit its exact width/depth/height/position in cm on the right</span></div>
     <div class="help-row"><kbd>Guide lines</kbd><span>Rectangle/Line/Circle/Arc/Move snap to them automatically</span></div>
@@ -1157,6 +1165,8 @@
   var wallThicknessEl = document.getElementById("wallThickness");
   var wallHeightInputEl = document.getElementById("wallHeight");
   var wallExtrudeBtnEl = document.getElementById("wallExtrudeBtn");
+  var wallSettingsToggleEl = document.getElementById("wallSettingsToggle");
+  var openingSettingsToggleEl = document.getElementById("openingSettingsToggle");
   var openingOptionsPanelEl = document.getElementById("openingOptionsPanel");
   var openingPresetDoorEl = document.getElementById("openingPresetDoor");
   var openingPresetWindowEl = document.getElementById("openingPresetWindow");
@@ -1848,6 +1858,21 @@
   gridToggleEl.addEventListener("click", function () {
     grid.visible = !grid.visible;
     gridToggleEl.setAttribute("aria-pressed", String(grid.visible));
+  });
+  // Wall/Opening settings used to auto-show/hide with the active tool, but
+  // that panel then sat on top of the canvas wherever it happened to land,
+  // silently eating clicks meant for drawing underneath it. Now it's an
+  // on-demand toggle like Sun/Layers/Library -- open only when asked for,
+  // independent of which tool is active, never in the way otherwise.
+  wallSettingsToggleEl.addEventListener("click", function () {
+    var visible = !wallOptionsPanelEl.classList.contains("visible");
+    wallOptionsPanelEl.classList.toggle("visible", visible);
+    wallSettingsToggleEl.setAttribute("aria-pressed", String(visible));
+  });
+  openingSettingsToggleEl.addEventListener("click", function () {
+    var visible = !openingOptionsPanelEl.classList.contains("visible");
+    openingOptionsPanelEl.classList.toggle("visible", visible);
+    openingSettingsToggleEl.setAttribute("aria-pressed", String(visible));
   });
 
   function toggleHelp(show) {
@@ -2689,8 +2714,8 @@
     tape: "Click a corner (snaps automatically), drag out, click to drop a guide line",
     "place-prop": "Click the ground to place it. Select it with Select and press Delete to remove.",
     offset: "Click a face, drag inward to set an offset, then switch to Push/Pull to raise or recess the new panel",
-    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E)",
-    opening: "Click a wall to cut a door or window there (pick which on the left)"
+    wall: "Click to start a wall, click again for each corner (segments snap to horizontal/vertical). Type a length, or X;Z / @X;Z for a coordinate, + Enter for an exact segment. Click near the start to close the loop. Walls draw flat until you extrude them (E). Thickness/height: the wall icon in the toolbar",
+    opening: "Click a wall to cut a door or window there. Door/Window choice: the opening icon in the toolbar"
   };
 
   function setTool(next) {
@@ -2710,8 +2735,6 @@
     stageEl.className = "tool-" + tool;
     toolButtons.forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.tool === tool ? "true" : "false"); });
     updateSwatchRailVisibility();
-    wallOptionsPanelEl.classList.toggle("visible", tool === "wall");
-    openingOptionsPanelEl.classList.toggle("visible", tool === "opening");
     setHint(HINTS[tool] || "");
   }
   toolButtons.forEach(function (b) {
